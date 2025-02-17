@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% load account socialaccount %}
+
+{% block title %}Sign In - Anything App{% endblock %}
+
+{% block content %}
+<div class="min-h-[calc(100vh-4rem)] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold">{% trans "Sign In" %}</h1>
+            <p class="mt-2 text-gray-400">
+                {% blocktrans %}Welcome back! Please sign in to continue.{% endblocktrans %}
+            </p>
+        </div>
+
+        <div class="card p-8 rounded-lg">
+            <form class="login space-y-6" method="POST" action="{% url 'account_login' %}">
+                {% csrf_token %}
+
+                {% if form.errors %}
+                <div class="bg-red-500 bg-opacity-10 border border-red-500 text-red-500 px-4 py-3 rounded">
+                    {% for error in form.non_field_errors %}
+                        <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <div>
+                    <label for="{{ form.login.id_for_label }}" class="block text-sm font-medium text-gray-400 mb-2">
+                        {% trans "Username or Email" %}
+                    </label>
+                    <input 
+                        type="text" 
+                        name="{{ form.login.html_name }}" 
+                        placeholder="username@example.com"
+                        class="form-input w-full px-4 py-2 rounded-lg"
+                        required
+                    >
+                    {% if form.login.errors %}
+                    <p class="mt-2 text-sm text-red-500">{{ form.login.errors.0 }}</p>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <label for="{{ form.password.id_for_label }}" class="block text-sm font-medium text-gray-400 mb-2">
+                        {% trans "Password" %}
+                    </label>
+                    <input 
+                        type="password" 
+                        name="{{ form.password.html_name }}" 
+                        placeholder="••••••••"
+                        class="form-input w-full px-4 py-2 rounded-lg"
+                        required
+                    >
+                    {% if form.password.errors %}
+                    <p class="mt-2 text-sm text-red-500">{{ form.password.errors.0 }}</p>
+                    {% endif %}
+                </div>
+
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <input 
+                            type="checkbox" 
+                            name="{{ form.remember.html_name }}" 
+                            class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-700 rounded bg-gray-900"
+                        >
+                        <label for="{{ form.remember.id_for_label }}" class="ml-2 block text-sm text-gray-400">
+                            {% trans "Remember me" %}
+                        </label>
+                    </div>
+                    <a href="{% url 'account_reset_password' %}" class="text-sm text-indigo-400 hover:text-indigo-300">
+                        {% trans "Forgot Password?" %}
+                    </a>
+                </div>
+
+                {% if redirect_field_value %}
+                <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}" />
+                {% endif %}
+
+                <button type="submit" class="w-full btn-primary px-6 py-3 rounded-lg">
+                    {% trans "Sign In" %}
+                </button>
+            </form>
+        </div>
+
+        <div class="text-center mt-6">
+            <p class="text-gray-400">
+                {% blocktrans %}Don't have an account?{% endblocktrans %}
+                <a href="{{ signup_url }}" class="text-indigo-400 hover:text-indigo-300 ml-1">
+                    {% trans "Sign up" %}
+                </a>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %} 

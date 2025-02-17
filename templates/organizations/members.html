@@ -1,0 +1,250 @@
+{% extends 'base.html' %}
+
+{% block title %}Members - {{ organization.name }} - Anything App{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-3xl font-bold mb-2">Manage Members</h1>
+            <p class="text-gray-400">{{ organization.name }}</p>
+        </div>
+        <button 
+            class="btn-primary px-6 py-2 rounded-lg"
+            onclick="document.getElementById('inviteModal').classList.remove('hidden')"
+        >
+            Invite Member
+        </button>
+    </div>
+
+    <!-- Members List -->
+    <div class="card p-6 rounded-lg">
+        <div class="space-y-6">
+            <!-- Owner -->
+            <div class="flex items-center justify-between py-4 border-b border-gray-700">
+                <div class="flex items-center space-x-4">
+                    <div class="w-10 h-10 bg-indigo-500 rounded-full flex items-center justify-center">
+                        <span class="text-lg font-medium">{{ organization.owner.username|first|upper }}</span>
+                    </div>
+                    <div>
+                        <p class="font-medium">{{ organization.owner.username }}</p>
+                        <p class="text-sm text-gray-400">Owner</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Other Members -->
+            {% for member in members %}
+            {% if member.user != organization.owner %}
+            <div class="flex items-center justify-between py-4 border-b border-gray-700 last:border-0">
+                <div class="flex items-center space-x-4">
+                    <div class="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center">
+                        <span class="text-lg font-medium">{{ member.user.username|first|upper }}</span>
+                    </div>
+                    <div>
+                        <p class="font-medium">{{ member.user.username }}</p>
+                        <p class="text-sm text-gray-400">{{ member.role|title }}</p>
+                    </div>
+                </div>
+                {% if user_role in 'ADMIN,OWNER' %}
+                <div class="flex items-center space-x-4">
+                    <select 
+                        class="form-input bg-transparent border-gray-700 rounded-lg"
+                        onchange="updateMemberRole('{{ member.id }}', this.value)"
+                    >
+                        <option value="ADMIN" {% if member.role == 'ADMIN' %}selected{% endif %}>Admin</option>
+                        <option value="MEMBER" {% if member.role == 'MEMBER' %}selected{% endif %}>Member</option>
+                        <option value="VIEWER" {% if member.role == 'VIEWER' %}selected{% endif %}>Viewer</option>
+                    </select>
+                    <button 
+                        class="text-red-400 hover:text-red-300"
+                        onclick="confirmRemoveMember('{{ member.id }}', '{{ member.user.username }}')"
+                    >
+                        Remove
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Role Descriptions -->
+    <div class="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="card p-6 rounded-lg">
+            <h3 class="text-xl font-semibold mb-4">Admin</h3>
+            <ul class="space-y-2 text-gray-400">
+                <li>• Can manage organization settings</li>
+                <li>• Can invite and manage members</li>
+                <li>• Full access to all apps</li>
+                <li>• Can create and delete apps</li>
+            </ul>
+        </div>
+
+        <div class="card p-6 rounded-lg">
+            <h3 class="text-xl font-semibold mb-4">Member</h3>
+            <ul class="space-y-2 text-gray-400">
+                <li>• Can view and use all apps</li>
+                <li>• Can create new apps</li>
+                <li>• Can update their own apps</li>
+                <li>• Cannot manage organization</li>
+            </ul>
+        </div>
+
+        <div class="card p-6 rounded-lg">
+            <h3 class="text-xl font-semibold mb-4">Viewer</h3>
+            <ul class="space-y-2 text-gray-400">
+                <li>• Can view all apps</li>
+                <li>• Cannot create or modify apps</li>
+                <li>• Cannot manage organization</li>
+                <li>• Read-only access</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Invite Member Modal -->
+<div id="inviteModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center">
+    <div class="bg-gray-900 rounded-lg p-8 max-w-md w-full">
+        <h3 class="text-xl font-semibold mb-4">Invite Member</h3>
+        <form id="inviteForm" class="space-y-4">
+            {% csrf_token %}
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-2">Email Address</label>
+                <input 
+                    type="email" 
+                    name="email" 
+                    class="form-input w-full"
+                    required
+                >
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-2">Role</label>
+                <select name="role" class="form-input w-full">
+                    <option value="MEMBER">Member</option>
+                    <option value="ADMIN">Admin</option>
+                    <option value="VIEWER">Viewer</option>
+                </select>
+            </div>
+            <div class="flex justify-end space-x-4">
+                <button 
+                    type="button"
+                    class="px-4 py-2 text-gray-400 hover:text-white"
+                    onclick="document.getElementById('inviteModal').classList.add('hidden')"
+                >
+                    Cancel
+                </button>
+                <button type="submit" class="btn-primary px-6 py-2 rounded-lg">
+                    Send Invitation
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Remove Member Modal -->
+<div id="removeModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center">
+    <div class="bg-gray-900 rounded-lg p-8 max-w-md w-full">
+        <h3 class="text-xl font-semibold mb-4">Remove Member</h3>
+        <p class="text-gray-400 mb-6">
+            Are you sure you want to remove <strong id="removeMemberName"></strong> from the organization?
+        </p>
+        <div class="flex justify-end space-x-4">
+            <button 
+                type="button"
+                class="px-4 py-2 text-gray-400 hover:text-white"
+                onclick="document.getElementById('removeModal').classList.add('hidden')"
+            >
+                Cancel
+            </button>
+            <button 
+                type="button"
+                class="px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg"
+                onclick="removeMember()"
+            >
+                Remove Member
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let memberToRemove = null;
+
+function updateMemberRole(memberId, newRole) {
+    fetch(`{% url 'organizations:members' organization.id %}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: `action=change_role&member_id=${memberId}&role=${newRole}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Member role updated successfully');
+        } else {
+            showNotification(data.error, 'error');
+        }
+    });
+}
+
+function confirmRemoveMember(memberId, username) {
+    memberToRemove = memberId;
+    document.getElementById('removeMemberName').textContent = username;
+    document.getElementById('removeModal').classList.remove('hidden');
+}
+
+function removeMember() {
+    if (!memberToRemove) return;
+
+    fetch(`{% url 'organizations:members' organization.id %}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: `action=remove&member_id=${memberToRemove}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            showNotification(data.error, 'error');
+            document.getElementById('removeModal').classList.add('hidden');
+        }
+    });
+}
+
+document.getElementById('inviteForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    
+    fetch(`{% url 'organizations:member_invite' organization.id %}`, {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('inviteModal').classList.add('hidden');
+            showNotification(data.message);
+            this.reset();
+        } else {
+            showNotification(data.error, 'error');
+        }
+    });
+});
+</script>
+{% endblock %} 

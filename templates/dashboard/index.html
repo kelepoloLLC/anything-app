@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Anything App{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold mb-2">Dashboard</h1>
+        <p class="text-gray-400">Welcome back, {{ user.username }}</p>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <div class="card p-6 rounded-lg">
+            <h3 class="text-xl font-semibold mb-4">Create New App</h3>
+            <p class="text-gray-400 mb-4">Transform your idea into a working application.</p>
+            <a href="{% url 'landing' %}" class="btn-primary px-6 py-2 rounded-lg inline-block">
+                Start Building
+            </a>
+        </div>
+
+        <div class="card p-6 rounded-lg">
+            <h3 class="text-xl font-semibold mb-4">My Organizations</h3>
+            <p class="text-gray-400 mb-4">Manage your organizations and team members.</p>
+            <a href="{% url 'organizations:list' %}" class="btn-primary px-6 py-2 rounded-lg inline-block">
+                View Organizations
+            </a>
+        </div>
+
+        <div class="card p-6 rounded-lg">
+            <h3 class="text-xl font-semibold mb-4">My Apps</h3>
+            <p class="text-gray-400 mb-4">View and manage your generated applications.</p>
+            <a href="{% url 'apps:list' %}" class="btn-primary px-6 py-2 rounded-lg inline-block">
+                View Apps
+            </a>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="mb-12">
+        <h2 class="text-2xl font-bold mb-6">Recent Activity</h2>
+        <div class="card p-6 rounded-lg">
+            <div class="space-y-4">
+                {% for app in user.organizations.all|slice:":5" %}
+                <div class="flex items-center justify-between py-4 border-b border-gray-700 last:border-0">
+                    <div>
+                        <h4 class="font-medium">{{ app.name }}</h4>
+                        <p class="text-sm text-gray-400">{{ app.created_at|timesince }} ago</p>
+                    </div>
+                    <a href="{% url 'apps:detail' app.id %}" class="text-indigo-400 hover:text-indigo-300">
+                        View Details
+                    </a>
+                </div>
+                {% empty %}
+                <div class="text-center py-8">
+                    <p class="text-gray-400">No recent activity</p>
+                    <a href="{% url 'landing' %}" class="text-indigo-400 hover:text-indigo-300 mt-2 inline-block">
+                        Create your first app
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Token Balance -->
+    <div class="card p-6 rounded-lg">
+        <div class="flex items-center justify-between">
+            <div>
+                <h3 class="text-xl font-semibold mb-2">Token Balance</h3>
+                <p class="text-3xl font-bold text-indigo-400">{{ user.token_balance }}</p>
+            </div>
+            <button class="btn-primary px-6 py-2 rounded-lg">
+                Get More Tokens
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %} 

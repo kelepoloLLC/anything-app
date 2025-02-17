@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+
+{% block title %}My Apps - Anything App{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-3xl font-bold mb-2">My Apps</h1>
+            <p class="text-gray-400">Manage your AI-generated applications</p>
+        </div>
+        <a href="{% url 'landing' %}" class="btn-primary px-6 py-2 rounded-lg">
+            Create New App
+        </a>
+    </div>
+
+    <!-- Apps Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for app in apps %}
+        <div class="card p-6 rounded-lg">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h3 class="text-xl font-semibold">{{ app.name }}</h3>
+                    <p class="text-sm text-gray-400">{{ app.organization.name }}</p>
+                </div>
+                <span class="px-2 py-1 rounded-full text-xs 
+                    {% if app.status == 'ACTIVE' %}bg-green-500{% elif app.status == 'UPDATING' %}bg-yellow-500{% else %}bg-red-500{% endif %}
+                ">
+                    {{ app.status }}
+                </span>
+            </div>
+            
+            <p class="text-gray-400 mb-4">{{ app.description|truncatechars:100 }}</p>
+            
+            <div class="flex justify-between items-center">
+                <div class="text-sm text-gray-400">
+                    <span>v{{ app.version }}</span>
+                    <span class="mx-2">•</span>
+                    <span>{{ app.created_at|timesince }} ago</span>
+                </div>
+                <a href="{% url 'apps:detail' app.id %}" class="text-indigo-400 hover:text-indigo-300">
+                    View Details
+                </a>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-span-full">
+            <div class="card p-8 rounded-lg text-center">
+                <h3 class="text-xl font-semibold mb-4">No Apps Yet</h3>
+                <p class="text-gray-400 mb-6">Start building your first app with AI assistance.</p>
+                <a href="{% url 'landing' %}" class="btn-primary px-6 py-2 rounded-lg inline-block">
+                    Create App
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Filters and Search (Future Enhancement) -->
+    <div class="mt-12">
+        <h2 class="text-2xl font-bold mb-6">Quick Actions</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="card p-6 rounded-lg">
+                <h3 class="text-xl font-semibold mb-4">App Templates</h3>
+                <p class="text-gray-400 mb-4">Start with pre-built templates for common use cases.</p>
+                <button class="text-indigo-400 hover:text-indigo-300">
+                    Browse Templates
+                </button>
+            </div>
+
+            <div class="card p-6 rounded-lg">
+                <h3 class="text-xl font-semibold mb-4">Import App</h3>
+                <p class="text-gray-400 mb-4">Import an existing app from another platform.</p>
+                <button class="text-indigo-400 hover:text-indigo-300">
+                    Import Now
+                </button>
+            </div>
+
+            <div class="card p-6 rounded-lg">
+                <h3 class="text-xl font-semibold mb-4">Documentation</h3>
+                <p class="text-gray-400 mb-4">Learn how to make the most of your apps.</p>
+                <button class="text-indigo-400 hover:text-indigo-300">
+                    View Docs
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

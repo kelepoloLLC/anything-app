@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}Sign Up - Anything App{% endblock %}
+
+{% block content %}
+<div class="min-h-[calc(100vh-4rem)] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold">{% trans "Sign Up" %}</h1>
+            <p class="mt-2 text-gray-400">
+                {% blocktrans %}Create your account to start building apps.{% endblocktrans %}
+            </p>
+        </div>
+
+        <div class="card p-8 rounded-lg">
+            <form class="signup space-y-6" id="signup_form" method="post" action="{% url 'account_signup' %}">
+                {% csrf_token %}
+
+                {% if form.errors %}
+                <div class="bg-red-500 bg-opacity-10 border border-red-500 text-red-500 px-4 py-3 rounded">
+                    {% for error in form.non_field_errors %}
+                        <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <div>
+                    <label for="{{ form.username.id_for_label }}" class="block text-sm font-medium text-gray-400 mb-2">
+                        {% trans "Username" %}
+                    </label>
+                    <input 
+                        type="text" 
+                        name="{{ form.username.html_name }}" 
+                        placeholder="johndoe"
+                        class="form-input w-full px-4 py-2 rounded-lg"
+                        required
+                    >
+                    {% if form.username.errors %}
+                    <p class="mt-2 text-sm text-red-500">{{ form.username.errors.0 }}</p>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <label for="{{ form.email.id_for_label }}" class="block text-sm font-medium text-gray-400 mb-2">
+                        {% trans "Email" %}
+                    </label>
+                    <input 
+                        type="email" 
+                        name="{{ form.email.html_name }}" 
+                        placeholder="john@example.com"
+                        class="form-input w-full px-4 py-2 rounded-lg"
+                        required
+                    >
+                    {% if form.email.errors %}
+                    <p class="mt-2 text-sm text-red-500">{{ form.email.errors.0 }}</p>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <label for="{{ form.password1.id_for_label }}" class="block text-sm font-medium text-gray-400 mb-2">
+                        {% trans "Password" %}
+                    </label>
+                    <input 
+                        type="password" 
+                        name="{{ form.password1.html_name }}" 
+                        placeholder="••••••••"
+                        class="form-input w-full px-4 py-2 rounded-lg"
+                        required
+                    >
+                    {% if form.password1.errors %}
+                    <p class="mt-2 text-sm text-red-500">{{ form.password1.errors.0 }}</p>
+                    {% endif %}
+                    <p class="mt-2 text-sm text-gray-400">{{ form.password1.help_text }}</p>
+                </div>
+
+                <div>
+                    <label for="{{ form.password2.id_for_label }}" class="block text-sm font-medium text-gray-400 mb-2">
+                        {% trans "Confirm Password" %}
+                    </label>
+                    <input 
+                        type="password" 
+                        name="{{ form.password2.html_name }}" 
+                        placeholder="••••••••"
+                        class="form-input w-full px-4 py-2 rounded-lg"
+                        required
+                    >
+                    {% if form.password2.errors %}
+                    <p class="mt-2 text-sm text-red-500">{{ form.password2.errors.0 }}</p>
+                    {% endif %}
+                </div>
+
+                {% if redirect_field_value %}
+                <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}" />
+                {% endif %}
+
+                <button type="submit" class="w-full btn-primary px-6 py-3 rounded-lg">
+                    {% trans "Sign Up" %}
+                </button>
+            </form>
+        </div>
+
+        <div class="text-center mt-6">
+            <p class="text-gray-400">
+                {% blocktrans %}Already have an account?{% endblocktrans %}
+                <a href="{{ login_url }}" class="text-indigo-400 hover:text-indigo-300 ml-1">
+                    {% trans "Sign in" %}
+                </a>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %} 

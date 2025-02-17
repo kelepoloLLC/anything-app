@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block title %}Create Organization - Anything App{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold mb-2">Create Organization</h1>
+        <p class="text-gray-400">Create a new organization to collaborate on apps</p>
+    </div>
+
+    <!-- Form -->
+    <div class="max-w-2xl">
+        <div class="card p-8 rounded-lg">
+            <form method="POST" class="space-y-6">
+                {% csrf_token %}
+                
+                {% if form.non_field_errors %}
+                <div class="bg-red-500 bg-opacity-10 border border-red-500 text-red-500 px-4 py-3 rounded">
+                    {{ form.non_field_errors }}
+                </div>
+                {% endif %}
+
+                <div>
+                    <label for="{{ form.name.id_for_label }}" class="block text-sm font-medium text-gray-400 mb-2">
+                        Organization Name
+                    </label>
+                    {{ form.name }}
+                    {% if form.name.errors %}
+                    <p class="mt-2 text-sm text-red-500">
+                        {{ form.name.errors.0 }}
+                    </p>
+                    {% endif %}
+                </div>
+
+                <div class="flex justify-end space-x-4">
+                    <a href="{% url 'organizations:list' %}" class="px-4 py-2 text-gray-400 hover:text-white">
+                        Cancel
+                    </a>
+                    <button type="submit" class="btn-primary px-6 py-2 rounded-lg">
+                        Create Organization
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Help Text -->
+        <div class="mt-8 space-y-4 text-sm text-gray-400">
+            <div>
+                <h3 class="font-medium text-white mb-2">What happens when you create an organization?</h3>
+                <ul class="list-disc list-inside space-y-2">
+                    <li>You become the owner of the organization</li>
+                    <li>You can invite team members to collaborate</li>
+                    <li>All apps created will be associated with the organization</li>
+                    <li>You can manage permissions and access control</li>
+                </ul>
+            </div>
+
+            <div>
+                <h3 class="font-medium text-white mb-2">Organization Best Practices</h3>
+                <ul class="list-disc list-inside space-y-2">
+                    <li>Use a clear, descriptive name</li>
+                    <li>Start with a small team and expand as needed</li>
+                    <li>Assign roles based on responsibilities</li>
+                    <li>Regularly review member access</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 
