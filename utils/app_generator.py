@@ -15,6 +15,18 @@ class AppGenerator:
             api_key=settings.ANTHROPIC_API_KEY
         )
 
+    def _clean_json_response(self, response_text: str) -> str:
+        """Clean the response text to extract only the JSON part."""
+        # Find the first { and last }
+        try:
+            start = response_text.find('{')
+            end = response_text.rindex('}') + 1
+            if start >= 0 and end > start:
+                return response_text[start:end]
+            return response_text
+        except ValueError:
+            return response_text
+
     def _get_app_structure(self):
         """Get the high-level app structure and page definitions."""
         try:
@@ -31,7 +43,7 @@ class AppGenerator:
                                 "type": "text",
                                 "text": f"""You are an expert CRM architect. Analyze this app idea and provide a high-level structure.
                                 
-The response should be in this JSON format:
+Return ONLY a JSON response in this exact format, with no additional text or notes:
 {{
     "name": "App name",
     "description": "App description",
@@ -60,9 +72,16 @@ Here is the app idea to analyze: {self.prompt.content}"""
             
             logger.info(f"Initial structure response: {message.content}")
             
-            # Parse the initial structure
-            initial_structure = json.loads(message.content[0].text)
-            logger.info(f"Successfully parsed initial app structure for prompt {self.prompt.id}")
+            try:
+                # Parse the initial structure
+                response_text = self._clean_json_response(message.content[0].text.strip())
+                logger.info(f"Attempting to parse initial structure: {response_text}")
+                initial_structure = json.loads(response_text)
+                logger.info(f"Successfully parsed initial app structure for prompt {self.prompt.id}")
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse initial structure: {str(e)}")
+                logger.error(f"Raw text that failed to parse: {response_text}")
+                raise
             
             # Now generate detailed page structures one by one
             detailed_pages = []
@@ -85,12 +104,12 @@ This page's purpose: {page['description']}
 The app has the following data structure:
 {json.dumps(initial_structure['data_structure'], indent=2)}
 
-Return the response in this JSON format:
+Return ONLY a JSON response in this exact format, with no additional text, notes, or explanations:
 {{
     "name": "{page['name']}",
     "slug": "{page['slug']}",
-    "template": "Django template content with proper styling",
-    "js": "JavaScript content (Stimulus controller format)",
+    "template": "HTML template content with proper styling",
+    "js": "JavaScript content in Stimulus format",
     "css": "CSS content",
     "contexts": [
         {{
@@ -99,16 +118,30 @@ Return the response in this JSON format:
             "description": "What this context provides"
         }}
     ]
-}}"""
+}}
+
+Important: 
+1. Return ONLY the JSON object, no other text
+2. Properly escape all special characters in strings
+3. Use \\" for quotes and \\n for newlines
+4. Make sure the response is valid JSON"""
                                 }
                             ]
                         }
                     ]
                 )
                 
-                logger.info(f"Received detailed structure for page: {page['name']}")
-                page_structure = json.loads(page_message.content[0].text)
-                detailed_pages.append(page_structure)
+                try:
+                    logger.info(f"Received response for page {page['name']}")
+                    response_text = self._clean_json_response(page_message.content[0].text.strip())
+                    logger.info(f"Attempting to parse page structure: {response_text}")
+                    page_structure = json.loads(response_text)
+                    logger.info(f"Successfully parsed structure for page: {page['name']}")
+                    detailed_pages.append(page_structure)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse page structure for {page['name']}: {str(e)}")
+                    logger.error(f"Raw text that failed to parse: {response_text}")
+                    raise
                 
                 # Accumulate token usage
                 self.prompt.tokens_used += page_message.usage.output_tokens
