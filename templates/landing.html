@@ -243,17 +243,37 @@ document.querySelector('form').addEventListener('submit', async (e) => {
         // Show success message
         showNotification('App generation started! Redirecting...', 'success');
         
-        // Redirect to status page after a brief delay
-        setTimeout(() => {
-            window.location.href = data.redirect_url;
-        }, 1500);
+        // Start polling for generation status
+        if (data.prompt_id) {
+            const statusUrl = `{% url 'apps:check_generation' 0 %}`.replace('0', data.prompt_id);
+            pollGenerationStatus(data.prompt_id, statusUrl);
+        } else {
+            showNotification('Error: No prompt ID received', 'error');
+        }
         
     } catch (error) {
         showNotification(error.message, 'error');
+    } finally {
         submitButton.disabled = false;
         submitButton.textContent = originalText;
     }
 });
+
+function pollGenerationStatus(promptId, statusUrl) {
+    const interval = setInterval(() => {
+        fetch(statusUrl)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'COMPLETED' && data.app_id) {
+                clearInterval(interval);
+                window.location.href = `{% url 'apps:detail' 0 %}`.replace('0', data.app_id);
+            } else if (data.status === 'FAILED') {
+                clearInterval(interval);
+                showNotification(data.error_message || 'Generation failed', 'error');
+            }
+        });
+    }, 2000);
+}
 
 // Notification helper
 function showNotification(message, type = 'success') {

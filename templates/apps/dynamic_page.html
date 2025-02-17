@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ page.name }} - {{ app.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+{{ custom_css|safe }}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- App Navigation -->
+    <div class="mb-8">
+        <div class="flex items-center space-x-2 text-sm text-gray-400">
+            <a href="{% url 'apps:list' %}" class="hover:text-white">Apps</a>
+            <span>/</span>
+            <a href="{% url 'apps:detail' app.id %}" class="hover:text-white">{{ app.name }}</a>
+            <span>/</span>
+            <span class="text-white">{{ page.name }}</span>
+        </div>
+    </div>
+
+    <!-- Dynamic Content -->
+    <div class="dynamic-content">
+        {{ rendered_content|safe }}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+{{ custom_js|safe }}
+</script>
+{% endblock %} 

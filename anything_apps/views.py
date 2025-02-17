@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django_q.tasks import async_task
-from .models import App, Prompt, PromptUpdate
+from .models import App, Prompt, PromptUpdate, AppPage
 from anything_org.models import Organization, OrganizationMember
 from utils.tasks import generate_app_async
 from django.urls import reverse
@@ -186,3 +186,30 @@ def check_update_status(request, update_id):
         'error_message': update.error_message,
         'tokens_used': update.tokens_used
     })
+
+@login_required
+def render_app_page(request, app_id, page_slug):
+    """View to render a specific app page."""
+    app = get_object_or_404(App, id=app_id)
+    page = get_object_or_404(AppPage, app=app, slug=page_slug)
+    
+    # Check if user has access to this app
+    if not app.organization.organizationmember_set.filter(user=request.user).exists():
+        messages.error(request, 'You do not have permission to view this app.')
+        return redirect('apps:list')
+    
+    try:
+        # Render the page with its contexts
+        rendered_content = page.render(request)
+        
+        return render(request, 'apps/dynamic_page.html', {
+            'app': app,
+            'page': page,
+            'rendered_content': rendered_content,
+            'custom_js': page.js_content,
+            'custom_css': page.css_content
+        })
+        
+    except Exception as e:
+        messages.error(request, f'Error rendering page: {str(e)}')
+        return redirect('apps:detail', app_id=app_id)
