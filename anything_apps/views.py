@@ -5,8 +5,10 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django_q.tasks import async_task
 from .models import App, Prompt, PromptUpdate
-from anything_org.models import Organization
+from anything_org.models import Organization, OrganizationMember
 from utils.tasks import generate_app_async
+from django.urls import reverse
+from django.conf import settings
 
 @login_required
 def app_list(request):
@@ -41,6 +43,13 @@ def generate_app(request):
     if not request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({'error': 'Invalid request'}, status=400)
     
+    # Check for API key
+    if not settings.ANTHROPIC_API_KEY:
+        return JsonResponse({
+            'error': 'Anthropic API key not configured. Please set the ANTHROPIC_API_KEY environment variable.',
+            'message': 'Server configuration error'
+        }, status=500)
+    
     prompt_content = request.POST.get('prompt')
     org_id = request.POST.get('organization_id')
     
@@ -54,7 +63,16 @@ def generate_app(request):
         else:
             organization = request.user.owned_organizations.first()
             if not organization:
-                return JsonResponse({'error': 'No organization available'}, status=400)
+                # Create a default organization for the user if none exists
+                organization = Organization.objects.create(
+                    name=f"{request.user.username}'s Organization",
+                    owner=request.user
+                )
+                OrganizationMember.objects.create(
+                    organization=organization,
+                    user=request.user,
+                    role='ADMIN'
+                )
         
         # Create prompt
         prompt = Prompt.objects.create(
@@ -77,7 +95,8 @@ def generate_app(request):
             'success': True,
             'message': 'App generation started',
             'prompt_id': prompt.id,
-            'task_id': task_id
+            'task_id': task_id,
+            'redirect_url': reverse('apps:check_generation', args=[prompt.id])
         })
         
     except Exception as e:

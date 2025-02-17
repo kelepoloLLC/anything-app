@@ -4,49 +4,162 @@
 
 {% block extra_css %}
 <style>
-    .wave {
-        position: absolute;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(45deg, #0a0a0a 0%, #000000 100%);
-        animation: wave 8s ease-in-out infinite;
+    .wave-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        pointer-events: none;
         z-index: 0;
     }
 
+    .wave {
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle at center, rgba(79, 70, 229, 0.08) 0%, rgba(0, 0, 0, 0) 60%);
+        animation: wave 25s infinite;
+        transform-origin: 50% 50%;
+        z-index: 0;
+    }
+
+    .wave:nth-child(2) {
+        top: -50%;
+        left: -50%;
+        background: radial-gradient(circle at center, rgba(124, 58, 237, 0.08) 0%, rgba(0, 0, 0, 0) 60%);
+        animation: wave2 20s infinite;
+    }
+
+    .wave:nth-child(3) {
+        top: -50%;
+        left: -50%;
+        background: radial-gradient(circle at center, rgba(99, 102, 241, 0.08) 0%, rgba(0, 0, 0, 0) 60%);
+        animation: wave3 22s infinite;
+    }
+
     @keyframes wave {
-        0% { transform: translateY(0); }
-        50% { transform: translateY(20px); }
-        100% { transform: translateY(0); }
+        0% {
+            transform: translate(-30%, -30%) rotate(0deg);
+        }
+        50% {
+            transform: translate(30%, 30%) rotate(180deg);
+        }
+        100% {
+            transform: translate(-30%, -30%) rotate(360deg);
+        }
+    }
+
+    @keyframes wave2 {
+        0% {
+            transform: translate(30%, -30%) rotate(0deg);
+        }
+        50% {
+            transform: translate(-30%, 30%) rotate(-180deg);
+        }
+        100% {
+            transform: translate(30%, -30%) rotate(-360deg);
+        }
+    }
+
+    @keyframes wave3 {
+        0% {
+            transform: translate(-30%, 30%) rotate(0deg);
+        }
+        50% {
+            transform: translate(30%, -30%) rotate(180deg);
+        }
+        100% {
+            transform: translate(-30%, 30%) rotate(360deg);
+        }
     }
 
     .prompt-container {
         position: relative;
         z-index: 1;
+        animation: fadeInUp 1s ease-out;
     }
 
     .prompt-input {
-        background: rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.05);
         backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.1);
         transition: all 0.3s ease;
     }
 
     .prompt-input:focus {
-        background: rgba(255, 255, 255, 0.15);
-        border-color: rgba(255, 255, 255, 0.3);
-        box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(99, 102, 241, 0.5);
+        box-shadow: 0 0 20px rgba(99, 102, 241, 0.2);
+        transform: translateY(-2px);
+    }
+
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .title-gradient {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation: gradientFlow 8s ease infinite;
+    }
+
+    @keyframes gradientFlow {
+        0% {
+            background-position: 0% 50%;
+        }
+        50% {
+            background-position: 100% 50%;
+        }
+        100% {
+            background-position: 0% 50%;
+        }
+    }
+
+    .example-prompt {
+        animation: fadeIn 0.5s ease-out backwards;
+    }
+
+    .example-prompt:nth-child(1) { animation-delay: 0.3s; }
+    .example-prompt:nth-child(2) { animation-delay: 0.5s; }
+    .example-prompt:nth-child(3) { animation-delay: 0.7s; }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="relative min-h-[calc(100vh-4rem)] flex items-center justify-center">
+<div class="wave-container">
     <div class="wave"></div>
-    
+    <div class="wave"></div>
+    <div class="wave"></div>
+</div>
+
+<div class="relative min-h-[calc(100vh-4rem)] flex items-center justify-center">
     <div class="prompt-container w-full max-w-2xl mx-auto px-4">
         <div class="text-center mb-8">
             <h1 class="text-4xl sm:text-5xl md:text-6xl font-bold mb-4">
-                Build <span class="text-indigo-500">Anything</span>
+                Build <span class="title-gradient">Anything</span>
             </h1>
             <p class="text-gray-400 text-lg sm:text-xl">
                 Transform your ideas into reality with AI-powered app generation
@@ -65,7 +178,7 @@
                 >
                 <button 
                     type="submit"
-                    class="absolute right-2 top-1/2 transform -translate-y-1/2 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-md text-white font-medium transition-colors duration-200"
+                    class="absolute right-2 top-1/2 transform -translate-y-1/2 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-md text-white font-medium transition-all duration-200 hover:scale-105"
                 >
                     Generate
                 </button>
@@ -75,13 +188,13 @@
         <div class="mt-12 text-center">
             <p class="text-gray-400 mb-4">Popular examples:</p>
             <div class="flex flex-wrap justify-center gap-2">
-                <button class="example-prompt px-4 py-2 rounded-full border border-gray-700 text-sm text-gray-300 hover:border-gray-500 hover:text-white transition-colors duration-200">
+                <button class="example-prompt px-4 py-2 rounded-full border border-gray-700 text-sm text-gray-300 hover:border-indigo-500 hover:text-white hover:scale-105 transition-all duration-200">
                     A task management app with AI prioritization
                 </button>
-                <button class="example-prompt px-4 py-2 rounded-full border border-gray-700 text-sm text-gray-300 hover:border-gray-500 hover:text-white transition-colors duration-200">
+                <button class="example-prompt px-4 py-2 rounded-full border border-gray-700 text-sm text-gray-300 hover:border-indigo-500 hover:text-white hover:scale-105 transition-all duration-200">
                     An AI-powered content calendar
                 </button>
-                <button class="example-prompt px-4 py-2 rounded-full border border-gray-700 text-sm text-gray-300 hover:border-gray-500 hover:text-white transition-colors duration-200">
+                <button class="example-prompt px-4 py-2 rounded-full border border-gray-700 text-sm text-gray-300 hover:border-indigo-500 hover:text-white hover:scale-105 transition-all duration-200">
                     A personal finance tracker with predictions
                 </button>
             </div>
@@ -99,5 +212,63 @@ document.querySelectorAll('.example-prompt').forEach(button => {
         promptInput.focus();
     });
 });
+
+// Handle form submission
+document.querySelector('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const form = e.target;
+    const submitButton = form.querySelector('button[type="submit"]');
+    const originalText = submitButton.textContent;
+    
+    try {
+        submitButton.disabled = true;
+        submitButton.textContent = 'Generating...';
+        
+        const response = await fetch(form.action, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: new FormData(form)
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to generate app');
+        }
+        
+        // Show success message
+        showNotification('App generation started! Redirecting...', 'success');
+        
+        // Redirect to status page after a brief delay
+        setTimeout(() => {
+            window.location.href = data.redirect_url;
+        }, 1500);
+        
+    } catch (error) {
+        showNotification(error.message, 'error');
+        submitButton.disabled = false;
+        submitButton.textContent = originalText;
+    }
+});
+
+// Notification helper
+function showNotification(message, type = 'success') {
+    const notification = document.createElement('div');
+    notification.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 transition-opacity duration-500 ${
+        type === 'error' ? 'bg-red-500' : 'bg-green-500'
+    } text-white`;
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => notification.remove(), 500);
+    }, 3000);
+}
 </script>
 {% endblock %} 

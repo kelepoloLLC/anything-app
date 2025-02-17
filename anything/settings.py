@@ -145,16 +145,13 @@ Q_CLUSTER = {
     'workers': 4,
     'recycle': 500,
     'timeout': 600,
+    'retry': 650,  # Setting retry slightly higher than timeout
     'compress': True,
     'save_limit': 250,
     'queue_limit': 500,
     'cpu_affinity': 1,
     'label': 'Django Q',
-    'redis': {
-        'host': '127.0.0.1',
-        'port': 6379,
-        'db': 0,
-    }
+    'orm': 'default'  # Use Django ORM with the default database
 }
 
 # Rest Framework Settings
