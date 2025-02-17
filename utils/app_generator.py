@@ -251,3 +251,317 @@ Important:
                 app.save()
                 
             raise 
+
+    def _get_page_update(self, page: AppPage, update_prompt: str) -> dict:
+        """Generate an updated page structure based on the update prompt."""
+        try:
+            logger.info(f"Requesting page update from Claude for page {page.id}")
+            
+            # First, get the current data structure
+            data_structure = [
+                {
+                    "key": ds.key,
+                    "value_type": ds.value_type,
+                    "description": ds.description
+                }
+                for ds in page.app.datastore_set.all()
+            ]
+            
+            message = self.claude.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=2000,
+                temperature=0.7,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"""You are an expert Django template architect. Update the {page.name} page based on the user's request.
+
+Current page details:
+- Name: {page.name}
+- Slug: {page.slug}
+- Purpose: This is a page in a CRM app
+
+The app has the following data structure:
+{json.dumps(data_structure, indent=2)}
+
+Current template content:
+{page.template_content}
+
+Current JavaScript content:
+{page.js_content}
+
+Current CSS content:
+{page.css_content}
+
+Update request: {update_prompt}
+
+Return ONLY a JSON response with the updated page structure in this exact format, with no additional text or notes:
+{{
+    "name": "{page.name}",
+    "slug": "{page.slug}",
+    "template": "Updated HTML template content",
+    "js": "Updated JavaScript content in Stimulus format",
+    "css": "Updated CSS content",
+    "contexts": [
+        {{
+            "key": "context_key",
+            "query": "Django ORM query",
+            "description": "What this context provides"
+        }}
+    ]
+}}
+
+Important: 
+1. Return ONLY the JSON object, no other text
+2. Properly escape all special characters in strings
+3. Use \\" for quotes and \\n for newlines
+4. Keep existing functionality while adding the requested updates
+5. Maintain proper Stimulus controller format for JavaScript"""
+                            }
+                        ]
+                    }
+                ]
+            )
+            
+            try:
+                response_text = self._clean_json_response(message.content[0].text.strip())
+                logger.info(f"Attempting to parse page update: {response_text}")
+                page_update = json.loads(response_text)
+                logger.info(f"Successfully parsed update for page: {page.name}")
+                return page_update
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse page update: {str(e)}")
+                logger.error(f"Raw text that failed to parse: {response_text}")
+                raise
+                
+        except Exception as e:
+            logger.error(f"Error getting page update from Claude: {str(e)}")
+            raise
+
+    def update_page(self, page: AppPage, update_prompt: str) -> AppPage:
+        """Update a page based on the provided prompt."""
+        try:
+            logger.info(f"Starting page update for page {page.id}")
+            
+            # Get the updated page structure
+            page_update = self._get_page_update(page, update_prompt)
+            
+            # Update the page
+            page.template_content = page_update['template']
+            page.js_content = page_update.get('js', '')
+            page.css_content = page_update.get('css', '')
+            page.save()
+            
+            # Update or create context queries
+            existing_contexts = {ctx.context_key: ctx for ctx in page.contextquery_set.all()}
+            
+            for ctx_data in page_update.get('contexts', []):
+                if ctx_data['key'] in existing_contexts:
+                    # Update existing context
+                    ctx = existing_contexts[ctx_data['key']]
+                    ctx.query_content = ctx_data['query']
+                    ctx.save()
+                else:
+                    # Create new context
+                    ContextQuery.objects.create(
+                        page=page,
+                        context_key=ctx_data['key'],
+                        query_content=ctx_data['query'],
+                        query_type='orm'
+                    )
+            
+            logger.info(f"Successfully updated page {page.id}")
+            return page
+            
+        except Exception as e:
+            logger.error(f"Error updating page {page.id}: {str(e)}")
+            raise 
+
+    def update_app(self, app: App, update_content: str) -> App:
+        """Update an existing app based on the update prompt."""
+        try:
+            logger.info(f"Starting app update for app {app.id}")
+
+            # Get updated app structure from Claude
+            message = self.claude.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=2000,
+                temperature=0.7,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"""You are an expert CRM architect. Update this existing app based on the new requirements.
+
+Current app structure:
+Name: {app.name}
+Description: {app.description}
+Data Structure:
+{json.dumps([{
+    'key': ds.key,
+    'value_type': ds.value_type,
+    'value': ds.value
+} for ds in app.data_store.all()], indent=2)}
+
+Pages:
+{json.dumps([{
+    'name': p.name,
+    'slug': p.slug,
+    'description': 'Existing page'
+} for p in app.pages.all()], indent=2)}
+
+Update request: {update_content}
+
+Return ONLY a JSON response in this exact format, with no additional text or notes:
+{{
+    "name": "Updated app name",
+    "description": "Updated app description",
+    "data_structure": [
+        {{
+            "key": "data_key",
+            "value_type": "str|int|float|bool|json|date|datetime",
+            "value": ""
+        }}
+    ],
+    "pages": [
+        {{
+            "name": "Page name",
+            "slug": "page-slug",
+            "description": "What this page does"
+        }}
+    ]
+}}"""
+                            }
+                        ]
+                    }
+                ]
+            )
+            
+            try:
+                # Parse the updated structure
+                response_text = self._clean_json_response(message.content[0].text.strip())
+                logger.info(f"Attempting to parse updated structure: {response_text}")
+                updated_structure = json.loads(response_text)
+                logger.info(f"Successfully parsed updated app structure")
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse updated structure: {str(e)}")
+                logger.error(f"Raw text that failed to parse: {response_text}")
+                raise
+
+            # Update app details
+            app.name = updated_structure['name']
+            app.description = updated_structure['description']
+            app.save()
+
+            # Update data structure
+            current_data_keys = set(app.data_store.values_list('key', flat=True))
+            new_data_keys = {data['key'] for data in updated_structure['data_structure']}
+
+            # Remove deleted data stores
+            app.data_store.filter(key__in=current_data_keys - new_data_keys).delete()
+
+            # Update or create data stores
+            for data_def in updated_structure['data_structure']:
+                DataStore.objects.update_or_create(
+                    app=app,
+                    key=data_def['key'],
+                    defaults={
+                        'value_type': data_def['value_type'],
+                        'value': ''  # Keep existing value if updating
+                    }
+                )
+
+            # Now generate detailed page structures and update pages
+            current_page_slugs = set(app.pages.values_list('slug', flat=True))
+            new_page_slugs = {page['slug'] for page in updated_structure['pages']}
+
+            # Remove deleted pages
+            app.pages.filter(slug__in=current_page_slugs - new_page_slugs).delete()
+
+            # Update or create pages
+            for page_def in updated_structure['pages']:
+                # Get detailed page structure
+                page_message = self.claude.messages.create(
+                    model="claude-3-sonnet-20240229",
+                    max_tokens=2000,
+                    temperature=0.7,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": f"""You are an expert Django template architect. Generate a detailed page structure for a {page_def['name']} page in a CRM app.
+                                    
+This page's purpose: {page_def['description']}
+
+The app has the following data structure:
+{json.dumps(updated_structure['data_structure'], indent=2)}
+
+Return ONLY a JSON response in this exact format, with no additional text, notes, or explanations:
+{{
+    "name": "{page_def['name']}",
+    "slug": "{page_def['slug']}",
+    "template": "HTML template content with proper styling",
+    "js": "JavaScript content in Stimulus format",
+    "css": "CSS content",
+    "contexts": [
+        {{
+            "key": "context_key",
+            "query": "Django ORM query",
+            "description": "What this context provides"
+        }}
+    ]
+}}"""
+                                }
+                            ]
+                        }
+                    ]
+                )
+
+                try:
+                    response_text = self._clean_json_response(page_message.content[0].text.strip())
+                    logger.info(f"Attempting to parse page structure: {response_text}")
+                    page_structure = json.loads(response_text)
+                    logger.info(f"Successfully parsed structure for page: {page_def['name']}")
+
+                    # Update or create the page
+                    page, created = AppPage.objects.update_or_create(
+                        app=app,
+                        slug=page_structure['slug'],
+                        defaults={
+                            'name': page_structure['name'],
+                            'template_content': page_structure['template'],
+                            'js_content': page_structure.get('js', ''),
+                            'css_content': page_structure.get('css', '')
+                        }
+                    )
+
+                    # Update context queries
+                    if not created:
+                        page.context_queries.all().delete()
+
+                    for ctx in page_structure.get('contexts', []):
+                        ContextQuery.objects.create(
+                            page=page,
+                            context_key=ctx['key'],
+                            query_content=ctx['query'],
+                            query_type='orm'
+                        )
+
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse page structure for {page_def['name']}: {str(e)}")
+                    logger.error(f"Raw text that failed to parse: {response_text}")
+                    raise
+
+            logger.info(f"Successfully updated app {app.id}")
+            return app
+
+        except Exception as e:
+            logger.error(f"Error updating app {app.id}: {str(e)}")
+            raise 
