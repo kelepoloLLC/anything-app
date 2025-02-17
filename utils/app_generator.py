@@ -16,12 +16,12 @@ class AppGenerator:
         )
 
     def _get_app_structure(self):
-        """Generate app structure based on the prompt using Claude."""
+        """Get the high-level app structure and page definitions."""
         try:
-            logger.info(f"Requesting app structure from Claude for prompt {self.prompt.id}")
+            logger.info(f"Requesting initial app structure from Claude for prompt {self.prompt.id}")
             message = self.claude.messages.create(
                 model="claude-3-sonnet-20240229",
-                max_tokens=4000,
+                max_tokens=1000,
                 temperature=0.7,
                 messages=[
                     {
@@ -29,77 +29,98 @@ class AppGenerator:
                         "content": [
                             {
                                 "type": "text",
-                                "text": """You are an expert CRM template architect. Your task is to analyze the user's CRM app idea and create:
-                1. Page templates with proper styling
-                2. Data structure definitions
-                3. Context queries to populate the templates
-                4. Any necessary JavaScript for interactivity
-                
-                Return the response in JSON format with the following structure:
-                {
-                    "name": "App name",
-                    "description": "App description",
-                    "pages": [
-                        {
-                            "name": "Page name",
-                            "slug": "page-slug",
-                            "template": "Django template content",
-                            "js": "JavaScript content",
-                            "css": "CSS content",
-                            "contexts": [
-                                {
-                                    "key": "context_key",
-                                    "query": "Django ORM query",
-                                    "description": "What this context provides"
-                                }
-                            ]
-                        }
-                    ],
-                    "data_structure": [
-                        {
-                            "key": "data_key",
-                            "value_type": "str|int|float|bool|json|date|datetime",
-                            "description": "What this data represents"
-                        }
-                    ]
-                }
+                                "text": f"""You are an expert CRM architect. Analyze this app idea and provide a high-level structure.
+                                
+The response should be in this JSON format:
+{{
+    "name": "App name",
+    "description": "App description",
+    "data_structure": [
+        {{
+            "key": "data_key",
+            "value_type": "str|int|float|bool|json|date|datetime",
+            "description": "What this data represents"
+        }}
+    ],
+    "pages": [
+        {{
+            "name": "Page name",
+            "slug": "page-slug",
+            "description": "What this page does"
+        }}
+    ]
+}}
 
-                Here is the user's app idea to analyze: {self.prompt.content}"""
+Here is the app idea to analyze: {self.prompt.content}"""
                             }
                         ]
                     }
                 ]
             )
             
-            # Log the raw response for debugging
-            logger.info(f"Raw Claude response type: {type(message)}")
-            logger.info(f"Raw Claude response: {message}")
-            logger.info(f"Response content type: {type(message.content)}")
-            logger.info(f"Response content: {message.content}")
+            logger.info(f"Initial structure response: {message.content}")
             
-            if not message.content or not isinstance(message.content, list) or len(message.content) == 0:
-                raise ValueError("Empty or invalid response from Claude")
+            # Parse the initial structure
+            initial_structure = json.loads(message.content[0].text)
+            logger.info(f"Successfully parsed initial app structure for prompt {self.prompt.id}")
             
-            # Update token usage
-            self.prompt.tokens_used = message.usage.output_tokens
+            # Now generate detailed page structures one by one
+            detailed_pages = []
+            for page in initial_structure['pages']:
+                logger.info(f"Generating detailed structure for page: {page['name']}")
+                page_message = self.claude.messages.create(
+                    model="claude-3-sonnet-20240229",
+                    max_tokens=2000,
+                    temperature=0.7,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": f"""You are an expert Django template architect. Generate a detailed page structure for a {page['name']} page in a CRM app.
+                                    
+This page's purpose: {page['description']}
+
+The app has the following data structure:
+{json.dumps(initial_structure['data_structure'], indent=2)}
+
+Return the response in this JSON format:
+{{
+    "name": "{page['name']}",
+    "slug": "{page['slug']}",
+    "template": "Django template content with proper styling",
+    "js": "JavaScript content (Stimulus controller format)",
+    "css": "CSS content",
+    "contexts": [
+        {{
+            "key": "context_key",
+            "query": "Django ORM query",
+            "description": "What this context provides"
+        }}
+    ]
+}}"""
+                                }
+                            ]
+                        }
+                    ]
+                )
+                
+                logger.info(f"Received detailed structure for page: {page['name']}")
+                page_structure = json.loads(page_message.content[0].text)
+                detailed_pages.append(page_structure)
+                
+                # Accumulate token usage
+                self.prompt.tokens_used += page_message.usage.output_tokens
+            
+            # Update the initial structure with detailed pages
+            initial_structure['pages'] = detailed_pages
+            
+            # Add initial message tokens
+            self.prompt.tokens_used += message.usage.output_tokens
             self.prompt.save()
             
-            # Parse and validate the response
-            try:
-                # The response is a list of content blocks, get the first one's text
-                response_text = message.content[0].text
-                logger.info(f"Response text to parse: {response_text}")
-                
-                if not response_text:
-                    raise ValueError("Empty response text from Claude")
-                    
-                app_structure = json.loads(response_text)
-                logger.info(f"Successfully received and parsed app structure for prompt {self.prompt.id}")
-                return app_structure
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse Claude response for prompt {self.prompt.id}: {str(e)}")
-                logger.error(f"Raw text that failed to parse: {response_text}")
-                raise ValueError(f"Invalid JSON response from Claude: {str(e)}")
+            return initial_structure
                 
         except Exception as e:
             logger.error(f"Error getting app structure from Claude for prompt {self.prompt.id}: {str(e)}")
