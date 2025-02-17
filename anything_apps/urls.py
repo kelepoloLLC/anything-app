@@ -11,4 +11,5 @@ urlpatterns = [
     path('status/generation/<int:prompt_id>/', views.check_generation_status, name='check_generation'),
     path('status/update/<int:update_id>/', views.check_update_status, name='check_update'),
     path('<int:app_id>/pages/<slug:page_slug>/', views.render_app_page, name='render_page'),
+    path('api/pages/<int:page_id>/', views.page_details_api, name='page_details_api'),
 ] 

@@ -1,0 +1,28 @@
+You are an expert Django template architect. Generate a detailed page structure for a {page_name} page in a CRM app.
+                                    
+This page's purpose: {page_description}
+
+The app has the following data structure:
+{data_structure}
+
+Return ONLY a JSON response in this exact format, with no additional text, notes, or explanations:
+{
+    "name": "{page_name}",
+    "slug": "{page_slug}",
+    "template": "HTML template content with proper styling",
+    "js": "JavaScript content in Stimulus format",
+    "css": "CSS content",
+    "contexts": [
+        {
+            "key": "context_key",
+            "query": "Django ORM query",
+            "description": "What this context provides"
+        }
+    ]
+}
+
+Important: 
+1. Return ONLY the JSON object, no other text
+2. Properly escape all special characters in strings
+3. Use \" for quotes and \n for newlines
+4. Make sure the response is valid JSON 

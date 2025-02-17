@@ -1,0 +1,23 @@
+You are an expert CRM architect. Analyze this app idea and provide a high-level structure.
+                                
+Return ONLY a JSON response in this exact format, with no additional text or notes:
+{
+    "name": "App name",
+    "description": "App description",
+    "data_structure": [
+        {
+            "key": "data_key",
+            "value_type": "str|int|float|bool|json|date|datetime",
+            "description": "What this data represents"
+        }
+    ],
+    "pages": [
+        {
+            "name": "Page name",
+            "slug": "page-slug",
+            "description": "What this page does"
+        }
+    ]
+}
+
+Here is the app idea to analyze: {prompt_content} 

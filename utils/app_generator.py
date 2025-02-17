@@ -2,8 +2,10 @@ import anthropic
 from django.conf import settings
 from anything_apps.models import App, AppPage, DataStore, ContextQuery, Prompt
 from anything_org.models import Organization
+from django.contrib.staticfiles.finders import find
 import json
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -14,15 +16,81 @@ class AppGenerator:
         self.claude = anthropic.Client(
             api_key=settings.ANTHROPIC_API_KEY
         )
+        self.base_prompt_path = os.path.join(settings.BASE_DIR, 'static', 'prompts')
+
+    def _load_prompt_template(self, template_name: str) -> str:
+        """Load a prompt template using Django's static file finders."""
+        template_path = find(f'prompts/{template_name}.txt')
+        if not template_path:
+            error_msg = f"Could not find prompt template: prompts/{template_name}.txt"
+            logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
+            
+        try:
+            with open(template_path, 'r') as f:
+                return f.read()
+        except Exception as e:
+            logger.error(f"Error loading prompt template {template_name}: {str(e)}")
+            raise
 
     def _clean_json_response(self, response_text: str) -> str:
-        """Clean the response text to extract only the JSON part."""
-        # Find the first { and last }
+        """Clean the response text to extract only the JSON part and handle control characters."""
         try:
+            # Find the first { and last }
             start = response_text.find('{')
             end = response_text.rindex('}') + 1
             if start >= 0 and end > start:
-                return response_text[start:end]
+                json_text = response_text[start:end]
+                
+                # First try to parse as is
+                try:
+                    json.loads(json_text)
+                    return json_text
+                except json.JSONDecodeError:
+                    # If that fails, try to clean up the string
+                    # First, normalize newlines
+                    cleaned_text = json_text.replace('\r\n', '\n').replace('\r', '\n')
+                    
+                    # Handle escaped newlines in strings
+                    in_string = False
+                    string_char = None
+                    result = []
+                    i = 0
+                    while i < len(cleaned_text):
+                        char = cleaned_text[i]
+                        
+                        # Handle string boundaries
+                        if char in ('"', "'") and (i == 0 or cleaned_text[i-1] != '\\'):
+                            if not in_string:
+                                in_string = True
+                                string_char = char
+                            elif char == string_char:
+                                in_string = False
+                                string_char = None
+                        
+                        # Handle newlines
+                        if char == '\n':
+                            if in_string:
+                                result.append('\\n')
+                            else:
+                                result.append(' ')
+                        else:
+                            result.append(char)
+                        
+                        i += 1
+                    
+                    cleaned_text = ''.join(result)
+                    
+                    # Try to parse again
+                    try:
+                        json.loads(cleaned_text)
+                        return cleaned_text
+                    except json.JSONDecodeError:
+                        # If still failing, try more aggressive cleaning
+                        cleaned_text = cleaned_text.replace('\\"', '"')
+                        cleaned_text = cleaned_text.replace('\\\\', '\\')
+                        return cleaned_text
+                        
             return response_text
         except ValueError:
             return response_text
@@ -31,6 +99,13 @@ class AppGenerator:
         """Get the high-level app structure and page definitions."""
         try:
             logger.info(f"Requesting initial app structure from Claude for prompt {self.prompt.id}")
+            
+            # Load and format the app structure prompt
+            prompt_template = self._load_prompt_template('app_structure')
+            formatted_prompt = prompt_template.format(
+                prompt_content=self.prompt.content
+            )
+            
             message = self.claude.messages.create(
                 model="claude-3-sonnet-20240229",
                 max_tokens=1000,
@@ -38,34 +113,7 @@ class AppGenerator:
                 messages=[
                     {
                         "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"""You are an expert CRM architect. Analyze this app idea and provide a high-level structure.
-                                
-Return ONLY a JSON response in this exact format, with no additional text or notes:
-{{
-    "name": "App name",
-    "description": "App description",
-    "data_structure": [
-        {{
-            "key": "data_key",
-            "value_type": "str|int|float|bool|json|date|datetime",
-            "description": "What this data represents"
-        }}
-    ],
-    "pages": [
-        {{
-            "name": "Page name",
-            "slug": "page-slug",
-            "description": "What this page does"
-        }}
-    ]
-}}
-
-Here is the app idea to analyze: {self.prompt.content}"""
-                            }
-                        ]
+                        "content": [{"type": "text", "text": formatted_prompt}]
                     }
                 ]
             )
@@ -87,6 +135,16 @@ Here is the app idea to analyze: {self.prompt.content}"""
             detailed_pages = []
             for page in initial_structure['pages']:
                 logger.info(f"Generating detailed structure for page: {page['name']}")
+                
+                # Load and format the page structure prompt
+                page_prompt_template = self._load_prompt_template('page_structure')
+                formatted_page_prompt = page_prompt_template.format(
+                    page_name=page['name'],
+                    page_description=page['description'],
+                    page_slug=page['slug'],
+                    data_structure=json.dumps(initial_structure['data_structure'], indent=2)
+                )
+                
                 page_message = self.claude.messages.create(
                     model="claude-3-sonnet-20240229",
                     max_tokens=2000,
@@ -94,39 +152,7 @@ Here is the app idea to analyze: {self.prompt.content}"""
                     messages=[
                         {
                             "role": "user",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": f"""You are an expert Django template architect. Generate a detailed page structure for a {page['name']} page in a CRM app.
-                                    
-This page's purpose: {page['description']}
-
-The app has the following data structure:
-{json.dumps(initial_structure['data_structure'], indent=2)}
-
-Return ONLY a JSON response in this exact format, with no additional text, notes, or explanations:
-{{
-    "name": "{page['name']}",
-    "slug": "{page['slug']}",
-    "template": "HTML template content with proper styling",
-    "js": "JavaScript content in Stimulus format",
-    "css": "CSS content",
-    "contexts": [
-        {{
-            "key": "context_key",
-            "query": "Django ORM query",
-            "description": "What this context provides"
-        }}
-    ]
-}}
-
-Important: 
-1. Return ONLY the JSON object, no other text
-2. Properly escape all special characters in strings
-3. Use \\" for quotes and \\n for newlines
-4. Make sure the response is valid JSON"""
-                                }
-                            ]
+                            "content": [{"type": "text", "text": formatted_page_prompt}]
                         }
                     ]
                 )
@@ -257,15 +283,27 @@ Important:
         try:
             logger.info(f"Requesting page update from Claude for page {page.id}")
             
-            # First, get the current data structure
+            # Get the current data structure
             data_structure = [
                 {
                     "key": ds.key,
                     "value_type": ds.value_type,
-                    "description": ds.description
+                    "value": ds.value
                 }
                 for ds in page.app.datastore_set.all()
             ]
+            
+            # Load and format the page update prompt
+            prompt_template = self._load_prompt_template('page_update')
+            formatted_prompt = prompt_template.format(
+                page_name=page.name,
+                page_slug=page.slug,
+                data_structure=json.dumps(data_structure, indent=2),
+                template_content=page.template_content,
+                js_content=page.js_content,
+                css_content=page.css_content,
+                update_prompt=update_prompt
+            )
             
             message = self.claude.messages.create(
                 model="claude-3-sonnet-20240229",
@@ -274,54 +312,7 @@ Important:
                 messages=[
                     {
                         "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"""You are an expert Django template architect. Update the {page.name} page based on the user's request.
-
-Current page details:
-- Name: {page.name}
-- Slug: {page.slug}
-- Purpose: This is a page in a CRM app
-
-The app has the following data structure:
-{json.dumps(data_structure, indent=2)}
-
-Current template content:
-{page.template_content}
-
-Current JavaScript content:
-{page.js_content}
-
-Current CSS content:
-{page.css_content}
-
-Update request: {update_prompt}
-
-Return ONLY a JSON response with the updated page structure in this exact format, with no additional text or notes:
-{{
-    "name": "{page.name}",
-    "slug": "{page.slug}",
-    "template": "Updated HTML template content",
-    "js": "Updated JavaScript content in Stimulus format",
-    "css": "Updated CSS content",
-    "contexts": [
-        {{
-            "key": "context_key",
-            "query": "Django ORM query",
-            "description": "What this context provides"
-        }}
-    ]
-}}
-
-Important: 
-1. Return ONLY the JSON object, no other text
-2. Properly escape all special characters in strings
-3. Use \\" for quotes and \\n for newlines
-4. Keep existing functionality while adding the requested updates
-5. Maintain proper Stimulus controller format for JavaScript"""
-                            }
-                        ]
+                        "content": [{"type": "text", "text": formatted_prompt}]
                     }
                 ]
             )
@@ -385,7 +376,24 @@ Important:
         try:
             logger.info(f"Starting app update for app {app.id}")
 
-            # Get updated app structure from Claude
+            # Load and format the app update prompt
+            prompt_template = self._load_prompt_template('app_update')
+            formatted_prompt = prompt_template.format(
+                app_name=app.name,
+                app_description=app.description,
+                data_structure=json.dumps([{
+                    'key': ds.key,
+                    'value_type': ds.value_type,
+                    'value': ds.value
+                } for ds in app.data_store.all()], indent=2),
+                pages=json.dumps([{
+                    'name': p.name,
+                    'slug': p.slug,
+                    'description': 'Existing page'
+                } for p in app.pages.all()], indent=2),
+                update_content=update_content
+            )
+
             message = self.claude.messages.create(
                 model="claude-3-sonnet-20240229",
                 max_tokens=2000,
@@ -393,51 +401,7 @@ Important:
                 messages=[
                     {
                         "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"""You are an expert CRM architect. Update this existing app based on the new requirements.
-
-Current app structure:
-Name: {app.name}
-Description: {app.description}
-Data Structure:
-{json.dumps([{
-    'key': ds.key,
-    'value_type': ds.value_type,
-    'value': ds.value
-} for ds in app.data_store.all()], indent=2)}
-
-Pages:
-{json.dumps([{
-    'name': p.name,
-    'slug': p.slug,
-    'description': 'Existing page'
-} for p in app.pages.all()], indent=2)}
-
-Update request: {update_content}
-
-Return ONLY a JSON response in this exact format, with no additional text or notes:
-{{
-    "name": "Updated app name",
-    "description": "Updated app description",
-    "data_structure": [
-        {{
-            "key": "data_key",
-            "value_type": "str|int|float|bool|json|date|datetime",
-            "value": ""
-        }}
-    ],
-    "pages": [
-        {{
-            "name": "Page name",
-            "slug": "page-slug",
-            "description": "What this page does"
-        }}
-    ]
-}}"""
-                            }
-                        ]
+                        "content": [{"type": "text", "text": formatted_prompt}]
                     }
                 ]
             )
@@ -485,79 +449,232 @@ Return ONLY a JSON response in this exact format, with no additional text or not
 
             # Update or create pages
             for page_def in updated_structure['pages']:
-                # Get detailed page structure
-                page_message = self.claude.messages.create(
-                    model="claude-3-sonnet-20240229",
-                    max_tokens=2000,
-                    temperature=0.7,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": f"""You are an expert Django template architect. Generate a detailed page structure for a {page_def['name']} page in a CRM app.
-                                    
-This page's purpose: {page_def['description']}
+                # Define the base template content
+                template = r'''
+<div class="page-details" data-controller="page-details">
+  <div class="page-header">
+    <h1>{{ page.name }}</h1>
+    <div class="page-actions">
+      <button class="btn btn-primary" data-action="click->page-details#showAddForm">Add Data</button>
+      <div class="search-box">
+        <input type="text" class="form-control" placeholder="Search..." data-page-details-target="searchInput" data-action="input->page-details#filterData">
+      </div>
+    </div>
+  </div>
 
-The app has the following data structure:
-{json.dumps(updated_structure['data_structure'], indent=2)}
+  <div class="data-grid" data-page-details-target="dataGrid">
+    {% for item in paginated_data %}
+    <div class="data-row" data-item-id="{{ item.id }}">
+      {% for field, value in item.items %}
+      <div class="data-cell">
+        <strong>{{ field }}</strong> {{ value }}
+      </div>
+      {% endfor %}
+      <div class="row-actions">
+        <button class="btn btn-sm btn-danger" data-action="click->page-details#deleteItem" data-item-id="{{ item.id }}">Delete</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
 
-Return ONLY a JSON response in this exact format, with no additional text, notes, or explanations:
-{{
-    "name": "{page_def['name']}",
-    "slug": "{page_def['slug']}",
-    "template": "HTML template content with proper styling",
-    "js": "JavaScript content in Stimulus format",
-    "css": "CSS content",
-    "contexts": [
-        {{
-            "key": "context_key",
-            "query": "Django ORM query",
-            "description": "What this context provides"
-        }}
-    ]
-}}"""
-                                }
-                            ]
-                        }
-                    ]
+  <div class="pagination">
+    {% if paginated_data.has_previous %}
+    <a href="?page={{ paginated_data.previous_page_number }}" class="btn btn-outline-primary">Previous</a>
+    {% endif %}
+    <span class="current-page">Page {{ paginated_data.number }} of {{ paginated_data.paginator.num_pages }}</span>
+    {% if paginated_data.has_next %}
+    <a href="?page={{ paginated_data.next_page_number }}" class="btn btn-outline-primary">Next</a>
+    {% endif %}
+  </div>
+
+  <div class="modal fade" id="addDataModal" tabindex="-1" data-page-details-target="addModal">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Add New Data</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form data-action="submit->page-details#addData">
+            {% for field in data_structure %}
+            <div class="mb-3">
+              <label class="form-label">{{ field.key }}</label>
+              <input type="{{ field.input_type }}" class="form-control" name="{{ field.key }}" required>
+            </div>
+            {% endfor %}
+            <button type="submit" class="btn btn-primary">Save</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+'''
+                # Define the Stimulus controller
+                js = r'''
+import { Controller } from '@hotwired/stimulus'
+
+export default class extends Controller {
+  static targets = ['dataGrid', 'searchInput', 'addModal']
+
+  connect() {
+    this.originalData = Array.from(this.dataGridTarget.children)
+  }
+
+  filterData() {
+    const searchTerm = this.searchInputTarget.value.toLowerCase()
+    this.originalData.forEach(row => {
+      const text = row.textContent.toLowerCase()
+      row.style.display = text.includes(searchTerm) ? '' : 'none'
+    })
+  }
+
+  showAddForm() {
+    const modal = new bootstrap.Modal(this.addModalTarget)
+    modal.show()
+  }
+
+  async addData(event) {
+    event.preventDefault()
+    const form = event.target
+    const formData = new FormData(form)
+
+    try {
+      const response = await fetch(window.location.pathname + '/add-data/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+      })
+
+      if (response.ok) {
+        window.location.reload()
+      } else {
+        throw new Error('Failed to add data')
+      }
+    } catch (error) {
+      console.error('Error adding data:', error)
+      alert('Failed to add data. Please try again.')
+    }
+  }
+
+  async deleteItem(event) {
+    if (!confirm('Are you sure you want to delete this item?')) return
+
+    const itemId = event.target.dataset.itemId
+    try {
+      const response = await fetch(`${window.location.pathname}/delete-data/${itemId}/`, {
+        method: 'DELETE',
+        headers: {
+          'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+      })
+
+      if (response.ok) {
+        event.target.closest('.data-row').remove()
+      } else {
+        throw new Error('Failed to delete item')
+      }
+    } catch (error) {
+      console.error('Error deleting item:', error)
+      alert('Failed to delete item. Please try again.')
+    }
+  }
+}
+'''
+                # Define the CSS
+                css = r'''
+.page-details {
+  padding: 2rem;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.page-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.search-box {
+  min-width: 300px;
+}
+
+.data-grid {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.data-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 0.5rem;
+  align-items: center;
+}
+
+.data-cell {
+  flex: 1;
+  min-width: 200px;
+}
+
+.row-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+}
+
+.current-page {
+  padding: 0.5rem 1rem;
+  background: #f8f9fa;
+  border-radius: 0.25rem;
+}
+'''
+                # Create or update the page
+                page, created = AppPage.objects.update_or_create(
+                    app=app,
+                    slug=page_def['slug'],
+                    defaults={
+                        'name': page_def['name'],
+                        'template_content': template.strip(),
+                        'js_content': js.strip(),
+                        'css_content': css.strip()
+                    }
                 )
 
-                try:
-                    response_text = self._clean_json_response(page_message.content[0].text.strip())
-                    logger.info(f"Attempting to parse page structure: {response_text}")
-                    page_structure = json.loads(response_text)
-                    logger.info(f"Successfully parsed structure for page: {page_def['name']}")
+                # Update context queries
+                if not created:
+                    page.context_queries.all().delete()
 
-                    # Update or create the page
-                    page, created = AppPage.objects.update_or_create(
-                        app=app,
-                        slug=page_structure['slug'],
-                        defaults={
-                            'name': page_structure['name'],
-                            'template_content': page_structure['template'],
-                            'js_content': page_structure.get('js', ''),
-                            'css_content': page_structure.get('css', '')
-                        }
-                    )
+                # Create the standard context queries
+                ContextQuery.objects.create(
+                    page=page,
+                    context_key='paginated_data',
+                    query_content='from django.core.paginator import Paginator\npaginator = Paginator(DataStore.objects.filter(app=app), 10)  # 10 items per page\npage_number = request.GET.get("page", 1)\npaginated_data = paginator.get_page(page_number)',
+                    query_type='orm'
+                )
 
-                    # Update context queries
-                    if not created:
-                        page.context_queries.all().delete()
-
-                    for ctx in page_structure.get('contexts', []):
-                        ContextQuery.objects.create(
-                            page=page,
-                            context_key=ctx['key'],
-                            query_content=ctx['query'],
-                            query_type='orm'
-                        )
-
-                except json.JSONDecodeError as e:
-                    logger.error(f"Failed to parse page structure for {page_def['name']}: {str(e)}")
-                    logger.error(f"Raw text that failed to parse: {response_text}")
-                    raise
+                ContextQuery.objects.create(
+                    page=page,
+                    context_key='data_structure',
+                    query_content='data_structure = [{"key": ds.key, "value_type": ds.value_type, "input_type": "text" if ds.value_type in ["str", "date", "datetime"] else ds.value_type} for ds in DataStore.objects.filter(app=app)]',
+                    query_type='orm'
+                )
 
             logger.info(f"Successfully updated app {app.id}")
             return app

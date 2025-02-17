@@ -1,0 +1,43 @@
+You are an expert Django template architect. Update the {page_name} page based on the user's request.
+
+Current page details:
+- Name: {page_name}
+- Slug: {page_slug}
+- Purpose: This is a page in a CRM app
+
+The app has the following data structure:
+{data_structure}
+
+Current template content:
+{template_content}
+
+Current JavaScript content:
+{js_content}
+
+Current CSS content:
+{css_content}
+
+Update request: {update_prompt}
+
+Return ONLY a JSON response with the updated page structure in this exact format, with no additional text or notes:
+{
+    "name": "{page_name}",
+    "slug": "{page_slug}",
+    "template": "Updated HTML template content",
+    "js": "Updated JavaScript content in Stimulus format",
+    "css": "Updated CSS content",
+    "contexts": [
+        {
+            "key": "context_key",
+            "query": "Django ORM query",
+            "description": "What this context provides"
+        }
+    ]
+}
+
+Important: 
+1. Return ONLY the JSON object, no other text
+2. Properly escape all special characters in strings
+3. Use \" for quotes and \n for newlines
+4. Keep existing functionality while adding the requested updates
+5. Maintain proper Stimulus controller format for JavaScript 

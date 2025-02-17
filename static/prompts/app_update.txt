@@ -1,0 +1,32 @@
+You are an expert CRM architect. Update this existing app based on the new requirements.
+
+Current app structure:
+Name: {app_name}
+Description: {app_description}
+Data Structure:
+{data_structure}
+
+Pages:
+{pages}
+
+Update request: {update_content}
+
+Return ONLY a JSON response in this exact format, with no additional text or notes:
+{
+    "name": "Updated app name",
+    "description": "Updated app description",
+    "data_structure": [
+        {
+            "key": "data_key",
+            "value_type": "str|int|float|bool|json|date|datetime",
+            "value": ""
+        }
+    ],
+    "pages": [
+        {
+            "name": "Page name",
+            "slug": "page-slug",
+            "description": "What this page does"
+        }
+    ]
+} 

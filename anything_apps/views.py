@@ -9,6 +9,8 @@ from anything_org.models import Organization, OrganizationMember
 from utils.tasks import generate_app_async
 from django.urls import reverse
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
+import logging
 
 @login_required
 def app_list(request):
@@ -213,3 +215,52 @@ def render_app_page(request, app_id, page_slug):
     except Exception as e:
         messages.error(request, f'Error rendering page: {str(e)}')
         return redirect('apps:detail', app_id=app_id)
+
+@login_required
+def page_details_api(request, page_id):
+    """API endpoint to get page details."""
+    logger = logging.getLogger(__name__)
+    logger.info(f"Fetching page details for page_id: {page_id}")
+    
+    try:
+        page = AppPage.objects.get(id=page_id)
+        logger.info(f"Found page: {page.name} (id: {page.id})")
+        
+        # Check if user has access to the app through organization membership
+        has_access = page.app.organization.organizationmember_set.filter(user=request.user).exists()
+        logger.info(f"User {request.user.username} has access to app: {has_access}")
+        
+        if not has_access:
+            logger.warning(f"Access denied for user {request.user.username} to page {page_id}")
+            raise PermissionDenied("You do not have access to this app.")
+        
+        # Get context queries
+        context_queries = [{
+            'context_key': query.context_key,
+            'query_content': query.query_content
+        } for query in page.context_queries.all()]
+        logger.info(f"Found {len(context_queries)} context queries")
+        
+        response_data = {
+            'id': page.id,
+            'name': page.name,
+            'slug': page.slug,
+            'app_id': page.app_id,
+            'template_content': page.template_content,
+            'js_content': page.js_content,
+            'css_content': page.css_content,
+            'context_queries': context_queries
+        }
+        logger.info("Successfully prepared response data")
+        
+        return JsonResponse(response_data)
+        
+    except AppPage.DoesNotExist:
+        logger.error(f"Page not found: {page_id}")
+        return JsonResponse({'error': 'Page not found'}, status=404)
+    except PermissionDenied as e:
+        logger.error(f"Permission denied: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=403)
+    except Exception as e:
+        logger.exception(f"Unexpected error in page_details_api: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=500)

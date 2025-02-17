@@ -185,7 +185,87 @@
         </form>
     </div>
 </div>
-{% endblock %}
+
+<!-- Page Details Modal -->
+<div id="pageDetailsModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center">
+    <div class="bg-gray-900 rounded-lg p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-start mb-6">
+            <h3 class="text-xl font-semibold" id="pageDetailsTitle"></h3>
+            <button 
+                type="button"
+                class="text-gray-400 hover:text-white"
+                onclick="document.getElementById('pageDetailsModal').classList.add('hidden')"
+            >
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        
+        <!-- Tabs -->
+        <div class="border-b border-gray-700 mb-6">
+            <nav class="flex space-x-8">
+                <button 
+                    class="tab-button border-b-2 border-indigo-500 pb-4 px-1 text-sm font-medium text-indigo-400"
+                    onclick="showTab('template')"
+                    data-tab="template"
+                >
+                    Template
+                </button>
+                <button 
+                    class="tab-button border-b-2 border-transparent pb-4 px-1 text-sm font-medium text-gray-400 hover:text-gray-300"
+                    onclick="showTab('javascript')"
+                    data-tab="javascript"
+                >
+                    JavaScript
+                </button>
+                <button 
+                    class="tab-button border-b-2 border-transparent pb-4 px-1 text-sm font-medium text-gray-400 hover:text-gray-300"
+                    onclick="showTab('css')"
+                    data-tab="css"
+                >
+                    CSS
+                </button>
+                <button 
+                    class="tab-button border-b-2 border-transparent pb-4 px-1 text-sm font-medium text-gray-400 hover:text-gray-300"
+                    onclick="showTab('contexts')"
+                    data-tab="contexts"
+                >
+                    Context Queries
+                </button>
+            </nav>
+        </div>
+        
+        <!-- Content -->
+        <div class="space-y-4">
+            <div id="templateTab" class="tab-content">
+                <pre class="bg-gray-800 p-4 rounded-lg overflow-x-auto"><code id="templateContent"></code></pre>
+            </div>
+            <div id="javascriptTab" class="tab-content hidden">
+                <pre class="bg-gray-800 p-4 rounded-lg overflow-x-auto"><code id="javascriptContent"></code></pre>
+            </div>
+            <div id="cssTab" class="tab-content hidden">
+                <pre class="bg-gray-800 p-4 rounded-lg overflow-x-auto"><code id="cssContent"></code></pre>
+            </div>
+            <div id="contextsTab" class="tab-content hidden">
+                <div id="contextQueries" class="space-y-4"></div>
+            </div>
+        </div>
+        
+        <div class="mt-6 flex justify-end space-x-4">
+            <a id="viewPageLink" href="#" class="btn-primary px-6 py-2 rounded-lg">
+                View Page
+            </a>
+            <button 
+                type="button"
+                class="px-4 py-2 text-gray-400 hover:text-white"
+                onclick="document.getElementById('pageDetailsModal').classList.add('hidden')"
+            >
+                Close
+            </button>
+        </div>
+    </div>
+</div>
 
 {% block extra_js %}
 <script>
@@ -234,8 +314,82 @@ function pollUpdateStatus(updateId) {
 }
 
 function viewPageDetails(pageId) {
-    // Future enhancement: Show page details in a modal
-    showNotification('Page details viewer coming soon');
+    // Fetch page details
+    fetch(`{% url 'apps:page_details_api' 0 %}`.replace('0', pageId), {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(page => {
+        // Update modal title
+        document.getElementById('pageDetailsTitle').textContent = page.name;
+        
+        // Update content
+        document.getElementById('templateContent').textContent = page.template_content;
+        document.getElementById('javascriptContent').textContent = page.js_content || 'No JavaScript content';
+        document.getElementById('cssContent').textContent = page.css_content || 'No CSS content';
+        
+        // Update context queries
+        const contextQueriesContainer = document.getElementById('contextQueries');
+        contextQueriesContainer.innerHTML = '';
+        
+        if (page.context_queries && page.context_queries.length > 0) {
+            page.context_queries.forEach(query => {
+                const queryElement = document.createElement('div');
+                queryElement.className = 'bg-gray-800 p-4 rounded-lg';
+                queryElement.innerHTML = `
+                    <h4 class="font-medium mb-2">${query.context_key}</h4>
+                    <pre class="text-sm text-gray-400 overflow-x-auto">${query.query_content}</pre>
+                `;
+                contextQueriesContainer.appendChild(queryElement);
+            });
+        } else {
+            contextQueriesContainer.innerHTML = '<p class="text-gray-400">No context queries defined</p>';
+        }
+        
+        // Update view page link
+        document.getElementById('viewPageLink').href = `/apps/${page.app_id}/pages/${page.slug}/`;
+        
+        // Show the modal
+        document.getElementById('pageDetailsModal').classList.remove('hidden');
+        
+        // Show first tab
+        showTab('template');
+    })
+    .catch(error => {
+        console.error('Error fetching page details:', error);
+        showNotification('Failed to load page details: ' + error.message, 'error');
+    });
+}
+
+function showTab(tabName) {
+    // Hide all tab content
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.add('hidden');
+    });
+    
+    // Show selected tab content
+    document.getElementById(`${tabName}Tab`).classList.remove('hidden');
+    
+    // Update tab buttons
+    document.querySelectorAll('.tab-button').forEach(button => {
+        if (button.dataset.tab === tabName) {
+            button.classList.add('border-indigo-500', 'text-indigo-400');
+            button.classList.remove('border-transparent', 'text-gray-400');
+        } else {
+            button.classList.remove('border-indigo-500', 'text-indigo-400');
+            button.classList.add('border-transparent', 'text-gray-400');
+        }
+    });
 }
 </script>
-{% endblock %} 
+{% endblock extra_js %}
+{% endblock content %} 
