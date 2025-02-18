@@ -1,23 +1,21 @@
-{% extends "apps/app_base.html" %}
-
-{% block app_content %}
-{{ rendered_content|safe }}
-{% endblock %}
+{% extends "base.html" %}
 
 {% block extra_css %}
-{{ block.super }}
-{% if custom_css %}
+{% if app.css_content %}
 <style>
-{{ custom_css|safe }}
+{{ app.css_content|safe }}
 </style>
 {% endif %}
-{% endblock %}
+{% endblock extra_css %}
 
 {% block extra_js %}
-{{ block.super }}
-{% if custom_js %}
+{% if page.js_content %}
 <script>
-{{ custom_js|safe }}
+{{ page.js_content|safe }}
 </script>
 {% endif %}
-{% endblock %} 
+{% endblock extra_js %}
+
+{% block content %}
+{{ rendered_content|safe }}
+{% endblock content %} 

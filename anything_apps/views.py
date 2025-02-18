@@ -208,8 +208,7 @@ def render_app_page(request, app_id, page_slug):
             'app': app,
             'page': page,
             'rendered_content': rendered_content,
-            'custom_js': page.js_content,
-            'custom_css': page.css_content
+            'custom_js': page.js_content
         })
         
     except Exception as e:
@@ -248,7 +247,7 @@ def page_details_api(request, page_id):
             'app_id': page.app_id,
             'template_content': page.template_content,
             'js_content': page.js_content,
-            'css_content': page.css_content,
+            'css_content': page.app.css_content,  # Use app-level CSS
             'context_queries': context_queries
         }
         logger.info("Successfully prepared response data")

@@ -148,53 +148,9 @@ class AppGenerator:
         try:
             logger.info(f"Requesting initial app structure from Claude for prompt {self.prompt.id}")
             
-            # Get the DataStore model definition
-            datastore_model = '''class DataStore(models.Model):
-    VALUE_TYPES = [
-        ('str', 'String'),
-        ('int', 'Integer'),
-        ('float', 'Float'),
-        ('bool', 'Boolean'),
-        ('json', 'JSON'),
-        ('date', 'Date'),
-        ('datetime', 'DateTime'),
-    ]
-
-    app = models.ForeignKey(App, on_delete=models.CASCADE, related_name='data_store')
-    key = models.CharField(max_length=100)
-    value = models.TextField()
-    value_type = models.CharField(max_length=10, choices=VALUE_TYPES)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        unique_together = ['app', 'key']
-
-    def get_typed_value(self):
-        """Returns the value converted to its proper type"""
-        try:
-            if self.value_type == 'str':
-                return self.value
-            elif self.value_type == 'int':
-                return int(self.value)
-            elif self.value_type == 'float':
-                return float(self.value)
-            elif self.value_type == 'bool':
-                return self.value.lower() == 'true'
-            elif self.value_type == 'json':
-                return json.loads(self.value)
-            elif self.value_type == 'date':
-                return datetime.strptime(self.value, '%Y-%m-%d').date()
-            elif self.value_type == 'datetime':
-                return datetime.strptime(self.value, '%Y-%m-%d %H:%M:%S')
-        except Exception:
-            return None
-        return self.value'''
-            
             # Load and format the app structure prompt
             prompt_template = self._load_prompt_template('app_structure')
-            formatted_prompt = prompt_template.replace('{datastore_model}', datastore_model)
-            formatted_prompt = formatted_prompt.replace('{prompt_content}', self.prompt.content)
+            formatted_prompt = prompt_template.replace('{prompt_content}', self.prompt.content)
             
             message = self.claude.messages.create(
                 model="claude-3-sonnet-20240229",
@@ -207,8 +163,6 @@ class AppGenerator:
                     }
                 ]
             )
-            
-            logger.info(f"Initial structure response: {message.content}")
             
             try:
                 # Parse the initial structure
@@ -225,19 +179,7 @@ class AppGenerator:
             detailed_pages = []
             for page in initial_structure['pages']:
                 logger.info(f"Generating detailed structure for page: {page['name']}")
-                
-                # First get the page structure without detailed CSS
                 page_structure = self._get_page_structure(page, initial_structure)
-                
-                # Then get the detailed CSS
-                try:
-                    css_content = self._get_page_css(page['name'], initial_structure.get('theme', {}))
-                    page_structure['css'] = css_content
-                except Exception as e:
-                    logger.error(f"Failed to generate CSS for {page['name']}: {str(e)}")
-                    # Use minimal CSS if detailed CSS generation fails
-                    page_structure['css'] = "/* Minimal CSS */"
-                
                 detailed_pages.append(page_structure)
                 
             # Update the initial structure with detailed pages
@@ -311,7 +253,7 @@ class AppGenerator:
             raise
 
     def _get_page_structure(self, page: dict, app_structure: dict) -> dict:
-        """Generate page structure without detailed CSS."""
+        """Generate page structure without CSS."""
         try:
             # Load and format the page structure prompt
             page_prompt_template = self._load_prompt_template('page_structure')
@@ -370,22 +312,33 @@ class AppGenerator:
             raise
 
     def _create_pages(self, app: App, pages_data: list):
-        """Create pages with templates, contexts, and static content."""
+        """Create pages with templates and contexts."""
         try:
             logger.info(f"Creating pages for app {app.id}")
             for page_data in pages_data:
+                # Get page template
+                template = self._get_page_template(
+                    page_data['name'],
+                    page_data.get('description', '')
+                )
+                
+                # Get page context
+                context = self._get_page_context(page_data['name'], template)
+                
+                # Get page logic
+                js_logic = self._get_page_logic(page_data['name'], template, context)
+                
                 # Create the page
                 page = AppPage.objects.create(
                     app=app,
                     name=page_data['name'],
                     slug=page_data['slug'],
-                    template_content=page_data['template'],
-                    js_content=page_data.get('js', ''),
-                    css_content=page_data.get('css', '')
+                    template_content=template,
+                    js_content=js_logic
                 )
                 
                 # Create context queries for the page
-                for ctx in page_data.get('contexts', []):
+                for ctx in context:
                     ContextQuery.objects.create(
                         page=page,
                         context_key=ctx['key'],
@@ -395,6 +348,29 @@ class AppGenerator:
             logger.info(f"Successfully created pages for app {app.id}")
         except Exception as e:
             logger.error(f"Error creating pages for app {app.id}: {str(e)}")
+            raise
+
+    def _get_component_styles(self, theme: dict) -> str:
+        """Generate app-wide CSS based on theme and requirements."""
+        try:
+            style_prompt = self._load_prompt_template('component_styles')
+            formatted_prompt = style_prompt.replace('{theme}', json.dumps(theme))
+            
+            message = self.claude.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=4096,
+                temperature=0.7,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": formatted_prompt}]
+                    }
+                ]
+            )
+            
+            return message.content[0].text.strip()
+        except Exception as e:
+            logger.error(f"Error generating component styles: {str(e)}")
             raise
 
     def generate_app(self) -> App:
@@ -408,12 +384,16 @@ class AppGenerator:
             # Get app structure from Claude
             app_structure = self._get_app_structure()
 
+            # Generate app-wide CSS
+            app_css = self._get_component_styles(app_structure.get('theme', {}))
+
             # Create the app instance
             app = App.objects.create(
                 organization=self.organization,
                 name=app_structure['name'],
                 description=app_structure['description'],
                 initial_prompt=self.prompt,
+                css_content=app_css,
                 status='ACTIVE'
             )
             logger.info(f"Created app {app.id} for prompt {self.prompt.id}")
@@ -509,7 +489,6 @@ class AppGenerator:
             formatted_prompt = formatted_prompt.replace('{data_structure}', json.dumps(data_structure, indent=2))
             formatted_prompt = formatted_prompt.replace('{template_content}', page.template_content)
             formatted_prompt = formatted_prompt.replace('{js_content}', page.js_content)
-            formatted_prompt = formatted_prompt.replace('{css_content}', page.css_content)
             formatted_prompt = formatted_prompt.replace('{update_prompt}', update_prompt)
             formatted_prompt = formatted_prompt.replace('{datastore_model}', datastore_model)
             
@@ -551,7 +530,6 @@ class AppGenerator:
             # Update the page
             page.template_content = page_update['template']
             page.js_content = page_update.get('js', '')
-            page.css_content = page_update.get('css', '')
             page.save()
             
             # Update or create context queries
@@ -584,52 +562,8 @@ class AppGenerator:
         try:
             logger.info(f"Starting app update for app {app.id}")
 
-            # Get the DataStore model definition
-            datastore_model = '''class DataStore(models.Model):
-    VALUE_TYPES = [
-        ('str', 'String'),
-        ('int', 'Integer'),
-        ('float', 'Float'),
-        ('bool', 'Boolean'),
-        ('json', 'JSON'),
-        ('date', 'Date'),
-        ('datetime', 'DateTime'),
-    ]
-
-    app = models.ForeignKey(App, on_delete=models.CASCADE, related_name='data_store')
-    key = models.CharField(max_length=100)
-    value = models.TextField()
-    value_type = models.CharField(max_length=10, choices=VALUE_TYPES)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        unique_together = ['app', 'key']
-
-    def get_typed_value(self):
-        """Returns the value converted to its proper type"""
-        try:
-            if self.value_type == 'str':
-                return self.value
-            elif self.value_type == 'int':
-                return int(self.value)
-            elif self.value_type == 'float':
-                return float(self.value)
-            elif self.value_type == 'bool':
-                return self.value.lower() == 'true'
-            elif self.value_type == 'json':
-                return json.loads(self.value)
-            elif self.value_type == 'date':
-                return datetime.strptime(self.value, '%Y-%m-%d').date()
-            elif self.value_type == 'datetime':
-                return datetime.strptime(self.value, '%Y-%m-%d %H:%M:%S')
-        except Exception:
-            return None
-        return self.value'''
-
             # Load and format the app update prompt
             prompt_template = self._load_prompt_template('app_update')
-            # Replace placeholders with actual values
             formatted_prompt = prompt_template.replace('{app_name}', app.name)
             formatted_prompt = formatted_prompt.replace('{app_description}', app.description)
             formatted_prompt = formatted_prompt.replace('{data_structure}', json.dumps([{
@@ -643,7 +577,6 @@ class AppGenerator:
                 'description': 'Existing page'
             } for p in app.pages.all()], indent=2))
             formatted_prompt = formatted_prompt.replace('{update_content}', update_content)
-            formatted_prompt = formatted_prompt.replace('{datastore_model}', datastore_model)
 
             message = self.claude.messages.create(
                 model="claude-3-sonnet-20240229",
@@ -671,6 +604,11 @@ class AppGenerator:
             # Update app details
             app.name = updated_structure['name']
             app.description = updated_structure['description']
+            
+            # Generate new CSS if theme was updated
+            if 'theme' in updated_structure:
+                app.css_content = self._get_component_styles(updated_structure['theme'])
+            
             app.save()
 
             # Update data structure
@@ -700,325 +638,16 @@ class AppGenerator:
 
             # Update or create pages
             for page_def in updated_structure['pages']:
-                # Define the base template content
-                template = r'''
-<div class="page-details" data-controller="page-details">
-  <div class="page-header">
-    <h1>{{ page.name }}</h1>
-    <div class="page-actions">
-      <button class="btn btn-primary" data-action="click->page-details#showAddForm">Add Data</button>
-      <div class="search-box">
-        <input type="text" class="form-control" placeholder="Search..." data-page-details-target="searchInput" data-action="input->page-details#filterData">
-      </div>
-    </div>
-  </div>
-
-  <div class="data-grid" data-page-details-target="dataGrid">
-    {% for item in paginated_data %}
-    <div class="data-row" data-item-id="{{ item.id }}">
-      {% for field, value in item.items %}
-      <div class="data-cell">
-        <strong>{{ field }}</strong> {{ value }}
-      </div>
-      {% endfor %}
-      <div class="row-actions">
-        <button class="btn btn-sm btn-danger" data-action="click->page-details#deleteItem" data-item-id="{{ item.id }}">Delete</button>
-      </div>
-    </div>
-    {% endfor %}
-  </div>
-
-  <div class="pagination">
-    {% if paginated_data.has_previous %}
-    <a href="?page={{ paginated_data.previous_page_number }}" class="btn btn-outline-primary">Previous</a>
-    {% endif %}
-    <span class="current-page">Page {{ paginated_data.number }} of {{ paginated_data.paginator.num_pages }}</span>
-    {% if paginated_data.has_next %}
-    <a href="?page={{ paginated_data.next_page_number }}" class="btn btn-outline-primary">Next</a>
-    {% endif %}
-  </div>
-
-  <div class="modal fade" id="addDataModal" tabindex="-1" data-page-details-target="addModal">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">Add New Data</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <form data-action="submit->page-details#addData">
-            {% for field in data_structure %}
-            <div class="mb-3">
-              <label class="form-label">{{ field.key }}</label>
-              <input type="{{ field.input_type }}" class="form-control" name="{{ field.key }}" required>
-            </div>
-            {% endfor %}
-            <button type="submit" class="btn btn-primary">Save</button>
-          </form>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-'''
-                # Define the Stimulus controller
-                js = r'''
-import { Controller } from '@hotwired/stimulus'
-
-export default class extends Controller {
-  static targets = ['dataGrid', 'searchInput', 'addModal']
-
-  connect() {
-    this.originalData = Array.from(this.dataGridTarget.children)
-  }
-
-  filterData() {
-    const searchTerm = this.searchInputTarget.value.toLowerCase()
-    this.originalData.forEach(row => {
-      const text = row.textContent.toLowerCase()
-      row.style.display = text.includes(searchTerm) ? '' : 'none'
-    })
-  }
-
-  showAddForm() {
-    const modal = new bootstrap.Modal(this.addModalTarget)
-    modal.show()
-  }
-
-  async addData(event) {
-    event.preventDefault()
-    const form = event.target
-    const formData = new FormData(form)
-
-    try {
-      const response = await fetch(window.location.pathname + '/add-data/', {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-        }
-      })
-
-      if (response.ok) {
-        window.location.reload()
-      } else {
-        throw new Error('Failed to add data')
-      }
-    } catch (error) {
-      console.error('Error adding data:', error)
-      alert('Failed to add data. Please try again.')
-    }
-  }
-
-  async deleteItem(event) {
-    if (!confirm('Are you sure you want to delete this item?')) return
-
-    const itemId = event.target.dataset.itemId
-    try {
-      const response = await fetch(`${window.location.pathname}/delete-data/${itemId}/`, {
-        method: 'DELETE',
-        headers: {
-          'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-        }
-      })
-
-      if (response.ok) {
-        event.target.closest('.data-row').remove()
-      } else {
-        throw new Error('Failed to delete item')
-      }
-    } catch (error) {
-      console.error('Error deleting item:', error)
-      alert('Failed to delete item. Please try again.')
-    }
-  }
-}
-'''
-                # Define the CSS
-                css = r'''
-/* Base styles */
-.page-details {
-  padding: 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-  background: #ffffff;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-/* Header styles */
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 2rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.page-header h1 {
-  color: #111827;
-  font-size: 1.875rem;
-  font-weight: 600;
-}
-
-/* Form styles */
-.form-label {
-  display: block;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #374151;
-  margin-bottom: 0.5rem;
-}
-
-.form-control {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
-  background-color: #ffffff;
-  color: #111827;
-  font-size: 0.875rem;
-}
-
-.form-control:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
-/* Button styles */
-.btn {
-  padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
-  font-weight: 500;
-  font-size: 0.875rem;
-  transition: all 0.2s;
-}
-
-.btn-primary {
-  background-color: #3b82f6;
-  color: #ffffff;
-  border: none;
-}
-
-.btn-primary:hover {
-  background-color: #2563eb;
-}
-
-.btn-danger {
-  background-color: #ef4444;
-  color: #ffffff;
-  border: none;
-}
-
-.btn-danger:hover {
-  background-color: #dc2626;
-}
-
-/* Search box */
-.search-box {
-  min-width: 300px;
-}
-
-.search-box input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
-  background-color: #ffffff;
-}
-
-/* Data grid */
-.data-grid {
-  display: grid;
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-
-.data-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  padding: 1.25rem;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  align-items: center;
-}
-
-.data-cell {
-  flex: 1;
-  min-width: 200px;
-  color: #374151;
-}
-
-.data-cell strong {
-  color: #111827;
-  font-weight: 500;
-  margin-right: 0.5rem;
-}
-
-/* Modal styles */
-.modal-content {
-  background: #ffffff;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.modal-header {
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.modal-title {
-  color: #111827;
-  font-weight: 600;
-}
-
-.modal-body {
-  padding: 1.5rem;
-}
-
-/* Pagination */
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 1rem;
-  margin-top: 2rem;
-}
-
-.pagination a {
-  padding: 0.5rem 1rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.375rem;
-  color: #374151;
-  text-decoration: none;
-  transition: all 0.2s;
-}
-
-.pagination a:hover {
-  background-color: #f3f4f6;
-}
-
-.current-page {
-  padding: 0.5rem 1rem;
-  background: #f3f4f6;
-  border-radius: 0.375rem;
-  color: #374151;
-  font-weight: 500;
-}
-'''
+                page_structure = self._get_page_structure(page_def, updated_structure)
+                
                 # Create or update the page
                 page, created = AppPage.objects.update_or_create(
                     app=app,
                     slug=page_def['slug'],
                     defaults={
                         'name': page_def['name'],
-                        'template_content': template.strip(),
-                        'js_content': js.strip(),
-                        'css_content': css.strip()
+                        'template_content': page_structure['template'],
+                        'js_content': page_structure.get('js', '')
                     }
                 )
 
@@ -1026,31 +655,14 @@ export default class extends Controller {
                 if not created:
                     page.context_queries.all().delete()
 
-                # Create the standard context queries
-                ContextQuery.objects.create(
-                    page=page,
-                    context_key='data',
-                    query_content='data = DataStore.objects.filter(app=app).values()',
-                    query_type='orm'
-                )
-
-                ContextQuery.objects.create(
-                    page=page,
-                    context_key='paginated_data',
-                    query_content='''from django.core.paginator import Paginator
-data = DataStore.objects.filter(app=app).values()
-paginator = Paginator(data, 10)  # 10 items per page
-page_number = request.GET.get("page", 1)
-paginated_data = paginator.get_page(page_number)''',
-                    query_type='orm'
-                )
-
-                ContextQuery.objects.create(
-                    page=page,
-                    context_key='data_structure',
-                    query_content='data_structure = [{"key": ds.key, "value_type": ds.value_type, "input_type": "text" if ds.value_type in ["str", "date", "datetime"] else "number" if ds.value_type in ["int", "float"] else "checkbox" if ds.value_type == "bool" else "textarea" if ds.value_type == "json" else "text"} for ds in DataStore.objects.filter(app=app)]',
-                    query_type='orm'
-                )
+                # Create context queries
+                for ctx in page_structure.get('contexts', []):
+                    ContextQuery.objects.create(
+                        page=page,
+                        context_key=ctx['key'],
+                        query_content=ctx['query'],
+                        query_type='orm'
+                    )
 
             logger.info(f"Successfully updated app {app.id}")
             return app
@@ -1182,29 +794,6 @@ paginated_data = paginator.get_page(page_number)''',
             logger.error(f"Error getting page logic for {page_name}: {str(e)}")
             raise
 
-    def _get_component_styles(self, theme: dict) -> str:
-        """Get reusable component styles based on theme."""
-        try:
-            style_prompt = self._load_prompt_template('component_styles')
-            formatted_prompt = style_prompt.replace('{theme}', json.dumps(theme))
-            
-            message = self.claude.messages.create(
-                model="claude-3-sonnet-20240229",
-                max_tokens=2000,
-                temperature=0.7,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [{"type": "text", "text": formatted_prompt}]
-                    }
-                ]
-            )
-            
-            return message.content[0].text.strip()
-        except Exception as e:
-            logger.error(f"Error getting component styles: {str(e)}")
-            raise 
-
     def generate_app_v2(self) -> App:
         """Generate an app using the split prompting approach for better reliability."""
         try:
@@ -1216,54 +805,22 @@ paginated_data = paginator.get_page(page_number)''',
                 organization=self.organization,
                 name=app_metadata['name'],
                 description=app_metadata.get('description', ''),
-                prompt=self.prompt
+                initial_prompt=self.prompt,
+                status='ACTIVE'
             )
             
             # Step 2: Get pages structure
             pages_structure = self._get_app_pages_structure(app_metadata)
             
             # Step 3: Generate each page with split concerns
-            for page_data in pages_structure:
-                # Get page template
-                template = self._get_page_template(
-                    page_data['name'],
-                    page_data.get('description', '')
-                )
-                
-                # Get page context
-                context = self._get_page_context(page_data['name'], template)
-                
-                # Get page logic
-                js_logic = self._get_page_logic(page_data['name'], template, context)
-                
-                # Get component styles
-                component_styles = self._get_component_styles(app_metadata.get('theme', {}))
-                
-                # Create the page
-                AppPage.objects.create(
-                    app=app,
-                    name=page_data['name'],
-                    slug=page_data.get('slug', ''),
-                    template=template,
-                    js=js_logic,
-                    css=component_styles
-                )
-                
-                # Create context queries
-                for ctx in context:
-                    ContextQuery.objects.create(
-                        page=page,
-                        key=ctx['key'],
-                        query=ctx['query'],
-                        description=ctx.get('description', '')
-                    )
+            self._create_pages(app, pages_structure)
             
             # Step 4: Set up initial data structure if defined
             if 'data_structure' in app_metadata:
                 self._setup_data_structure(app, app_metadata['data_structure'])
             
             return app
-            
+
         except Exception as e:
             logger.error(f"Error in generate_app_v2: {str(e)}")
             raise 

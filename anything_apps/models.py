@@ -54,6 +54,7 @@ class App(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField()
     initial_prompt = models.ForeignKey(Prompt, on_delete=models.CASCADE, related_name='created_apps')
+    css_content = models.TextField(blank=True, help_text="Custom CSS for the entire app")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     version = models.IntegerField(default=1)
@@ -71,7 +72,6 @@ class AppPage(models.Model):
     slug = models.SlugField()
     template_content = models.TextField(help_text="Django template content for this page")
     js_content = models.TextField(blank=True, help_text="Custom JavaScript for this page")
-    css_content = models.TextField(blank=True, help_text="Custom CSS for this page")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

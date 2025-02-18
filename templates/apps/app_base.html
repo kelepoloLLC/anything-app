@@ -5,6 +5,11 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/app_base.css' %}">
+{% if app.css_content %}
+<style>
+{{ app.css_content|safe }}
+</style>
+{% endif %}
 {% endblock %}
 
 {% block content %}
