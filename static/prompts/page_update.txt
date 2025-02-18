@@ -5,6 +5,10 @@ Current page details:
 - Slug: {page_slug}
 - Purpose: This is a page in a CRM app
 
+The app uses the following DataStore model to store all data:
+
+{datastore_model}
+
 The app has the following data structure:
 {data_structure}
 
@@ -29,7 +33,7 @@ Return ONLY a JSON response with the updated page structure in this exact format
     "contexts": [
         {
             "key": "context_key",
-            "query": "Django ORM query",
+            "query": "Django ORM query that uses DataStore model",
             "description": "What this context provides"
         }
     ]
@@ -39,5 +43,7 @@ Important:
 1. Return ONLY the JSON object, no other text
 2. Properly escape all special characters in strings
 3. Use \" for quotes and \n for newlines
-4. Keep existing functionality while adding the requested updates
-5. Maintain proper Stimulus controller format for JavaScript 
+4. Make sure all context queries use the DataStore model and filter by app=app
+5. Include queries for data listing, filtering, and any aggregations needed
+6. Keep existing functionality while adding the requested updates
+7. Maintain proper Stimulus controller format for JavaScript 

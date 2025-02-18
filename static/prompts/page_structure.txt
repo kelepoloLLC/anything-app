@@ -1,28 +1,71 @@
-You are an expert Django template architect. Generate a detailed page structure for a {page_name} page in a CRM app.
-                                    
-This page's purpose: {page_description}
+You are a specialized AI focused on creating page structures.
+Your task is to generate both the template and metadata for a specific page.
 
-The app has the following data structure:
-{data_structure}
+Page Information:
+- Name: {page_name}
+- Description: {page_description}
+- Slug: {page_slug}
+- Data Structure: {data_structure}
 
-Return ONLY a JSON response in this exact format, with no additional text, notes, or explanations:
+IMPORTANT: Use these special delimiters in your response:
+1. Use (( )) instead of {{ }} for template variables
+   Example: ((variable_name)) instead of {{ variable_name }}
+2. Use (% %) instead of {% %} for template tags
+   Example: (% if condition %) instead of {% if condition %}
+3. Use || instead of " for HTML attributes
+   Example: <div class=||container||> instead of <div class="container">
+
+Respond in the following format:
+
+---TEMPLATE---
+[Your HTML template here using the special delimiters above]
+
+---JAVASCRIPT---
+[Your JavaScript code here using standard quotes]
+
+---METADATA---
 {
-    "name": "{page_name}",
-    "slug": "{page_slug}",
-    "template": "HTML template content with proper styling",
-    "js": "JavaScript content in Stimulus format",
-    "css": "CSS content",
+    "name": "Page name",
+    "slug": "url-friendly-slug",
     "contexts": [
         {
-            "key": "context_key",
-            "query": "Django ORM query",
-            "description": "What this context provides"
+            "key": "variable_name",
+            "query": "Python query to fetch the value",
+            "description": "Purpose of this variable"
         }
     ]
 }
 
-Important: 
-1. Return ONLY the JSON object, no other text
-2. Properly escape all special characters in strings
-3. Use \" for quotes and \n for newlines
-4. Make sure the response is valid JSON 
+Guidelines for TEMPLATE:
+1. Use semantic HTML5 elements
+2. Ensure proper ARIA attributes
+3. Use Bootstrap 5 classes
+4. Include proper data attributes
+5. Use the special delimiters defined above
+6. Use || for all HTML attribute values
+7. Use (( )) for all template variables
+8. Use (% %) for all template tags
+
+Guidelines for JAVASCRIPT:
+1. Use vanilla JavaScript
+2. Follow ES6+ best practices
+3. Implement proper error handling
+4. Use event delegation
+5. Clean up resources properly
+
+Guidelines for METADATA:
+1. Valid JSON format
+2. Clear, descriptive keys
+3. Efficient database queries
+4. Proper error handling
+5. Consider pagination
+
+Example Template:
+<div class=||container|| data-page=||example||>
+  <h1 class=||title||>((page_title))</h1>
+  (% if items %)
+    (% for item in items %)
+      <div class=||item||>((item.name))</div>
+    (% endfor %)
+  (% endif %)
+</div> 

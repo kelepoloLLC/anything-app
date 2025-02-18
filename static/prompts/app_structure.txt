@@ -1,9 +1,31 @@
-You are an expert CRM architect. Analyze this app idea and provide a high-level structure.
-                                
+You are an expert CRM architect and UI/UX designer. Analyze this app idea and provide a high-level structure with professional styling.
+
+The app uses the following DataStore model to store all data:
+
+{datastore_model}
+
+Design Requirements:
+1. Create a cohesive, professional app design following these principles:
+   - Modern, clean interface with consistent branding
+   - Professional color palette using HSL colors
+   - Clear typography and spacing hierarchy
+   - Well-designed components and interactions
+   - Proper error handling and loading states
+
+2. Branding Requirements:
+   - Subtle Kelepolo LLC branding in footer
+   - Professional app header with logo area
+   - Consistent brand colors throughout
+   - Clean, modern tab navigation
+
 Return ONLY a JSON response in this exact format, with no additional text or notes:
 {
     "name": "App name",
     "description": "App description",
+    "theme": {
+        "primaryColor": "hsl(215, 90%, 50%)",
+        "accentColor": "hsl(280, 90%, 50%)"
+    },
     "data_structure": [
         {
             "key": "data_key",

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ app.name }} - Kelepolo LLC{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/app_base.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="app-container">
+    <!-- App Header with Branding -->
+    <header class="app-header">
+        <div class="app-branding">
+            <h1 class="app-title">{{ app.name }}</h1>
+            <p class="app-description">{{ app.description }}</p>
+        </div>
+        
+        <!-- Tab Navigation -->
+        <nav class="app-nav">
+            <ul class="app-tabs">
+                {% for page in app.pages.all %}
+                <li class="app-tab {% if page.slug == current_page.slug %}active{% endif %}">
+                    <a href="{% url 'apps:render_page' app.id page.slug %}" class="app-tab-link">
+                        {{ page.name }}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </nav>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="app-content">
+        {% block app_content %}{% endblock %}
+    </main>
+
+    <!-- App Footer with Kelepolo Branding -->
+    <footer class="app-footer">
+        <div class="footer-content">
+            <div class="footer-branding">
+                <span class="powered-by">Powered by</span>
+                <a href="/" class="kelepolo-link">Kelepolo LLC</a>
+            </div>
+            <div class="footer-app-info">
+                <span class="app-name">{{ app.name }}</span>
+                <span class="separator">|</span>
+                <span class="timestamp">Last updated: {{ app.updated_at|date:"F j, Y" }}</span>
+            </div>
+        </div>
+    </footer>
+</div>
+{% endblock %} 

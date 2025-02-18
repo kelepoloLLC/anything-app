@@ -1,0 +1,153 @@
+// Design System Variables
+:root {
+    /* Colors */
+    --color-primary: {{ theme.primaryColor }};
+    --color-accent: {{ theme.accentColor }};
+    --color-background: hsl(210, 20%, 98%);
+    --color-surface: hsl(0, 0%, 100%);
+    --color-text-primary: hsl(215, 25%, 15%);
+    --color-text-secondary: hsl(215, 15%, 45%);
+    --color-text-muted: hsl(215, 10%, 60%);
+    --color-border: hsl(215, 15%, 85%);
+
+    /* Typography */
+    --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-size-base: 14px;
+    --line-height: 1.5;
+    --font-scale: 1.25;
+
+    /* Spacing */
+    --spacing-base: 0.5rem;
+    --spacing-scale: 1.5;
+    --spacing-xs: calc(var(--spacing-base) / 2);
+    --spacing-sm: var(--spacing-base);
+    --spacing-md: calc(var(--spacing-base) * var(--spacing-scale));
+    --spacing-lg: calc(var(--spacing-md) * var(--spacing-scale));
+    --spacing-xl: calc(var(--spacing-lg) * var(--spacing-scale));
+
+    /* Borders */
+    --border-radius-sm: 4px;
+    --border-radius: 6px;
+    --border-radius-lg: 8px;
+    --border-width: 1px;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
+    --shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
+
+    /* Transitions */
+    --transition-duration: 200ms;
+    --transition-timing: ease-in-out;
+}
+
+/* Base Styles */
+body {
+    font-family: var(--font-family);
+    font-size: var(--font-size-base);
+    line-height: var(--line-height);
+    color: var(--color-text-primary);
+    background-color: var(--color-background);
+}
+
+/* Typography Scale */
+h1, .h1 { font-size: calc(var(--font-size-base) * var(--font-scale) * var(--font-scale) * var(--font-scale)); }
+h2, .h2 { font-size: calc(var(--font-size-base) * var(--font-scale) * var(--font-scale)); }
+h3, .h3 { font-size: calc(var(--font-size-base) * var(--font-scale)); }
+small, .small { font-size: calc(var(--font-size-base) / var(--font-scale)); }
+
+/* Component Base Styles */
+.card {
+    background: var(--color-surface);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-sm);
+    padding: var(--spacing-md);
+    border: var(--border-width) solid var(--color-border);
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--border-radius-sm);
+    font-weight: 500;
+    transition: all var(--transition-duration) var(--transition-timing);
+    cursor: pointer;
+}
+
+.btn-primary {
+    background: var(--color-primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    filter: brightness(1.1);
+}
+
+.form-input {
+    width: 100%;
+    padding: var(--spacing-sm);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--border-radius-sm);
+    background: var(--color-surface);
+    transition: border-color var(--transition-duration) var(--transition-timing);
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 25%, transparent);
+}
+
+.table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.table th,
+.table td {
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.table th {
+    font-weight: 500;
+    text-align: left;
+    color: var(--color-text-secondary);
+}
+
+/* Loading States */
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--color-border) 25%,
+        color-mix(in srgb, var(--color-border) 90%, transparent) 50%,
+        var(--color-border) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+}
+
+@keyframes skeleton-loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Notifications */
+.toast {
+    position: fixed;
+    bottom: var(--spacing-lg);
+    right: var(--spacing-lg);
+    padding: var(--spacing-md);
+    border-radius: var(--border-radius);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-lg);
+    transform: translateY(100%);
+    animation: toast-in var(--transition-duration) var(--transition-timing) forwards;
+}
+
+@keyframes toast-in {
+    to { transform: translateY(0); }
+} 

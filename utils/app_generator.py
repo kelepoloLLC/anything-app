@@ -6,6 +6,7 @@ from django.contrib.staticfiles.finders import find
 import json
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -36,79 +37,168 @@ class AppGenerator:
     def _clean_json_response(self, response_text: str) -> str:
         """Clean the response text to extract only the JSON part and handle control characters."""
         try:
+            # First try to parse the entire response as JSON
+            try:
+                json.loads(response_text)
+                return response_text
+            except json.JSONDecodeError:
+                pass
+
             # Find the first { and last }
             start = response_text.find('{')
             end = response_text.rindex('}') + 1
+            
             if start >= 0 and end > start:
                 json_text = response_text[start:end]
                 
-                # First try to parse as is
+                # Remove any leading/trailing whitespace
+                json_text = json_text.strip()
+                
+                # Try to parse the extracted JSON
                 try:
                     json.loads(json_text)
                     return json_text
                 except json.JSONDecodeError:
-                    # If that fails, try to clean up the string
-                    # First, normalize newlines
+                    # First normalize all newlines
                     cleaned_text = json_text.replace('\r\n', '\n').replace('\r', '\n')
                     
-                    # Handle escaped newlines in strings
-                    in_string = False
-                    string_char = None
-                    result = []
-                    i = 0
-                    while i < len(cleaned_text):
-                        char = cleaned_text[i]
-                        
-                        # Handle string boundaries
-                        if char in ('"', "'") and (i == 0 or cleaned_text[i-1] != '\\'):
-                            if not in_string:
-                                in_string = True
-                                string_char = char
-                            elif char == string_char:
-                                in_string = False
-                                string_char = None
-                        
-                        # Handle newlines
-                        if char == '\n':
-                            if in_string:
-                                result.append('\\n')
-                            else:
-                                result.append(' ')
-                        else:
-                            result.append(char)
-                        
-                        i += 1
+                    # Handle HTML attributes with double quotes
+                    cleaned_text = cleaned_text.replace('class="', 'class=\\"')
+                    cleaned_text = cleaned_text.replace('" ', '\\" ')
                     
-                    cleaned_text = ''.join(result)
+                    # Handle data attributes
+                    cleaned_text = cleaned_text.replace('data-action="', 'data-action=\\"')
+                    cleaned_text = cleaned_text.replace('data-target="', 'data-target=\\"')
                     
-                    # Try to parse again
+                    # Handle template variables
+                    cleaned_text = cleaned_text.replace('{{', '\\{\\{').replace('}}', '\\}\\}')
+                    cleaned_text = cleaned_text.replace('{%', '\\{\\%').replace('%}', '\\%\\}')
+                    
+                    # Escape newlines
+                    cleaned_text = cleaned_text.replace('\n', '\\n')
+                    
+                    # Remove extra spaces
+                    cleaned_text = ' '.join(line.strip() for line in cleaned_text.split('\n'))
+                    
                     try:
                         json.loads(cleaned_text)
                         return cleaned_text
-                    except json.JSONDecodeError:
-                        # If still failing, try more aggressive cleaning
-                        cleaned_text = cleaned_text.replace('\\"', '"')
-                        cleaned_text = cleaned_text.replace('\\\\', '\\')
-                        return cleaned_text
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to clean JSON: {cleaned_text}")
+                        logger.error(f"JSON error: {str(e)}")
+                        raise
                         
             return response_text
-        except ValueError:
+        except Exception as e:
+            logger.error(f"Error cleaning JSON response: {str(e)}")
             return response_text
+
+    def _get_page_css(self, page_name: str, theme: dict) -> str:
+        """Generate detailed CSS for a page."""
+        try:
+            # Load and format the base styling prompt
+            css_template = self._load_prompt_template('base_styling')
+            formatted_prompt = css_template.replace('{{ theme.primaryColor }}', theme.get('primaryColor', 'hsl(215, 90%, 50%)'))
+            formatted_prompt = formatted_prompt.replace('{{ theme.accentColor }}', theme.get('accentColor', 'hsl(280, 90%, 50%)'))
+            
+            message = self.claude.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=4096,
+                temperature=0.7,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": formatted_prompt}]
+                    }
+                ]
+            )
+            
+            return message.content[0].text.strip()
+                
+        except Exception as e:
+            logger.error(f"Error generating CSS for page {page_name}: {str(e)}")
+            raise
+
+    def _escape_json_string(self, s: str) -> str:
+        """Properly escape a string for JSON inclusion."""
+        # First normalize newlines
+        s = s.replace('\r\n', '\n').replace('\r', '\n')
+        
+        # Handle HTML attributes with double quotes
+        s = s.replace('class="', 'class=\\"')
+        s = s.replace('" ', '\\" ')
+        s = s.replace('data-action="', 'data-action=\\"')
+        s = s.replace('data-target="', 'data-target=\\"')
+        
+        # Handle template variables
+        s = s.replace('{{', '\\{\\{').replace('}}', '\\}\\}')
+        s = s.replace('{%', '\\{\\%').replace('%}', '\\%\\}')
+        
+        # Escape remaining quotes and backslashes
+        s = s.replace('\\', '\\\\')
+        s = s.replace('"', '\\"')
+        
+        # Finally escape newlines
+        s = s.replace('\n', '\\n')
+        
+        return s
 
     def _get_app_structure(self):
         """Get the high-level app structure and page definitions."""
         try:
             logger.info(f"Requesting initial app structure from Claude for prompt {self.prompt.id}")
             
+            # Get the DataStore model definition
+            datastore_model = '''class DataStore(models.Model):
+    VALUE_TYPES = [
+        ('str', 'String'),
+        ('int', 'Integer'),
+        ('float', 'Float'),
+        ('bool', 'Boolean'),
+        ('json', 'JSON'),
+        ('date', 'Date'),
+        ('datetime', 'DateTime'),
+    ]
+
+    app = models.ForeignKey(App, on_delete=models.CASCADE, related_name='data_store')
+    key = models.CharField(max_length=100)
+    value = models.TextField()
+    value_type = models.CharField(max_length=10, choices=VALUE_TYPES)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['app', 'key']
+
+    def get_typed_value(self):
+        """Returns the value converted to its proper type"""
+        try:
+            if self.value_type == 'str':
+                return self.value
+            elif self.value_type == 'int':
+                return int(self.value)
+            elif self.value_type == 'float':
+                return float(self.value)
+            elif self.value_type == 'bool':
+                return self.value.lower() == 'true'
+            elif self.value_type == 'json':
+                return json.loads(self.value)
+            elif self.value_type == 'date':
+                return datetime.strptime(self.value, '%Y-%m-%d').date()
+            elif self.value_type == 'datetime':
+                return datetime.strptime(self.value, '%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return None
+        return self.value'''
+            
             # Load and format the app structure prompt
             prompt_template = self._load_prompt_template('app_structure')
-            formatted_prompt = prompt_template.format(
-                prompt_content=self.prompt.content
-            )
+            formatted_prompt = prompt_template.replace('{datastore_model}', datastore_model)
+            formatted_prompt = formatted_prompt.replace('{prompt_content}', self.prompt.content)
             
             message = self.claude.messages.create(
                 model="claude-3-sonnet-20240229",
-                max_tokens=1000,
+                max_tokens=4096,
                 temperature=0.7,
                 messages=[
                     {
@@ -136,42 +226,20 @@ class AppGenerator:
             for page in initial_structure['pages']:
                 logger.info(f"Generating detailed structure for page: {page['name']}")
                 
-                # Load and format the page structure prompt
-                page_prompt_template = self._load_prompt_template('page_structure')
-                formatted_page_prompt = page_prompt_template.format(
-                    page_name=page['name'],
-                    page_description=page['description'],
-                    page_slug=page['slug'],
-                    data_structure=json.dumps(initial_structure['data_structure'], indent=2)
-                )
+                # First get the page structure without detailed CSS
+                page_structure = self._get_page_structure(page, initial_structure)
                 
-                page_message = self.claude.messages.create(
-                    model="claude-3-sonnet-20240229",
-                    max_tokens=2000,
-                    temperature=0.7,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [{"type": "text", "text": formatted_page_prompt}]
-                        }
-                    ]
-                )
-                
+                # Then get the detailed CSS
                 try:
-                    logger.info(f"Received response for page {page['name']}")
-                    response_text = self._clean_json_response(page_message.content[0].text.strip())
-                    logger.info(f"Attempting to parse page structure: {response_text}")
-                    page_structure = json.loads(response_text)
-                    logger.info(f"Successfully parsed structure for page: {page['name']}")
-                    detailed_pages.append(page_structure)
-                except json.JSONDecodeError as e:
-                    logger.error(f"Failed to parse page structure for {page['name']}: {str(e)}")
-                    logger.error(f"Raw text that failed to parse: {response_text}")
-                    raise
+                    css_content = self._get_page_css(page['name'], initial_structure.get('theme', {}))
+                    page_structure['css'] = css_content
+                except Exception as e:
+                    logger.error(f"Failed to generate CSS for {page['name']}: {str(e)}")
+                    # Use minimal CSS if detailed CSS generation fails
+                    page_structure['css'] = "/* Minimal CSS */"
                 
-                # Accumulate token usage
-                self.prompt.tokens_used += page_message.usage.output_tokens
-            
+                detailed_pages.append(page_structure)
+                
             # Update the initial structure with detailed pages
             initial_structure['pages'] = detailed_pages
             
@@ -186,6 +254,103 @@ class AppGenerator:
             self.prompt.status = 'FAILED'
             self.prompt.error_message = str(e)
             self.prompt.save()
+            raise
+
+    def _convert_template_delimiters(self, template: str) -> str:
+        """Convert special template delimiters back to Django syntax."""
+        # Replace template variable delimiters
+        template = template.replace('((', '{{').replace('))', '}}')
+        
+        # Replace template tag delimiters
+        template = template.replace('(%', '{%').replace('%)', '%}')
+        
+        # Replace quote delimiters in HTML attributes
+        # Use regex to handle multi-line attributes properly
+        template = re.sub(r'=\|\|([^|]+)\|\|', r'="\1"', template)
+        
+        return template
+
+    def _parse_llm_response(self, response_text: str) -> dict:
+        """Parse the LLM response that contains separated sections."""
+        try:
+            sections = {}
+            current_section = None
+            current_content = []
+            
+            # Split response into lines and process each line
+            for line in response_text.split('\n'):
+                # Check for section markers
+                if line.strip().startswith('---') and line.strip().endswith('---'):
+                    if current_section:
+                        # Save the previous section
+                        sections[current_section] = '\n'.join(current_content).strip()
+                        current_content = []
+                    # Set new section (remove dashes and whitespace)
+                    current_section = line.strip().replace('-', '').strip()
+                else:
+                    if current_section:
+                        current_content.append(line)
+            
+            # Save the last section
+            if current_section and current_content:
+                sections[current_section] = '\n'.join(current_content).strip()
+            
+            # Convert template delimiters if TEMPLATE section exists
+            if 'TEMPLATE' in sections:
+                sections['TEMPLATE'] = self._convert_template_delimiters(sections['TEMPLATE'])
+            
+            # Parse the METADATA section as JSON
+            if 'METADATA' in sections:
+                sections['METADATA'] = json.loads(sections['METADATA'])
+            
+            return sections
+            
+        except Exception as e:
+            logger.error(f"Error parsing LLM response: {str(e)}")
+            logger.error(f"Response text: {response_text}")
+            raise
+
+    def _get_page_structure(self, page: dict, app_structure: dict) -> dict:
+        """Generate page structure without detailed CSS."""
+        try:
+            # Load and format the page structure prompt
+            page_prompt_template = self._load_prompt_template('page_structure')
+            formatted_page_prompt = page_prompt_template.replace('{page_name}', page['name'])
+            formatted_page_prompt = formatted_page_prompt.replace('{page_description}', page['description'])
+            formatted_page_prompt = formatted_page_prompt.replace('{page_slug}', page['slug'])
+            formatted_page_prompt = formatted_page_prompt.replace('{data_structure}', json.dumps(app_structure['data_structure'], indent=2))
+            
+            page_message = self.claude.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=4096,
+                temperature=0.7,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": formatted_page_prompt}]
+                    }
+                ]
+            )
+            
+            try:
+                # Parse the response into sections
+                sections = self._parse_llm_response(page_message.content[0].text.strip())
+                
+                # Construct the page structure
+                page_structure = sections['METADATA']
+                page_structure['template'] = sections['TEMPLATE']
+                page_structure['js'] = sections.get('JAVASCRIPT', '')  # JavaScript is optional
+                
+                logger.info(f"Successfully parsed structure for page: {page['name']}")
+                return page_structure
+                
+            except Exception as e:
+                logger.error(f"Failed to parse page structure for {page['name']}: {str(e)}")
+                logger.error(f"Raw text that failed to parse: {page_message.content[0].text.strip()}")
+                raise
+                
+        except Exception as e:
+            logger.error(f"Error generating page structure: {str(e)}")
             raise
 
     def _setup_data_structure(self, app: App, data_structure: list):
@@ -283,6 +448,49 @@ class AppGenerator:
         try:
             logger.info(f"Requesting page update from Claude for page {page.id}")
             
+            # Get the DataStore model definition
+            datastore_model = '''class DataStore(models.Model):
+    VALUE_TYPES = [
+        ('str', 'String'),
+        ('int', 'Integer'),
+        ('float', 'Float'),
+        ('bool', 'Boolean'),
+        ('json', 'JSON'),
+        ('date', 'Date'),
+        ('datetime', 'DateTime'),
+    ]
+
+    app = models.ForeignKey(App, on_delete=models.CASCADE, related_name='data_store')
+    key = models.CharField(max_length=100)
+    value = models.TextField()
+    value_type = models.CharField(max_length=10, choices=VALUE_TYPES)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['app', 'key']
+
+    def get_typed_value(self):
+        """Returns the value converted to its proper type"""
+        try:
+            if self.value_type == 'str':
+                return self.value
+            elif self.value_type == 'int':
+                return int(self.value)
+            elif self.value_type == 'float':
+                return float(self.value)
+            elif self.value_type == 'bool':
+                return self.value.lower() == 'true'
+            elif self.value_type == 'json':
+                return json.loads(self.value)
+            elif self.value_type == 'date':
+                return datetime.strptime(self.value, '%Y-%m-%d').date()
+            elif self.value_type == 'datetime':
+                return datetime.strptime(self.value, '%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return None
+        return self.value'''
+            
             # Get the current data structure
             data_structure = [
                 {
@@ -295,19 +503,19 @@ class AppGenerator:
             
             # Load and format the page update prompt
             prompt_template = self._load_prompt_template('page_update')
-            formatted_prompt = prompt_template.format(
-                page_name=page.name,
-                page_slug=page.slug,
-                data_structure=json.dumps(data_structure, indent=2),
-                template_content=page.template_content,
-                js_content=page.js_content,
-                css_content=page.css_content,
-                update_prompt=update_prompt
-            )
+            # Replace placeholders with actual values
+            formatted_prompt = prompt_template.replace('{page_name}', page.name)
+            formatted_prompt = formatted_prompt.replace('{page_slug}', page.slug)
+            formatted_prompt = formatted_prompt.replace('{data_structure}', json.dumps(data_structure, indent=2))
+            formatted_prompt = formatted_prompt.replace('{template_content}', page.template_content)
+            formatted_prompt = formatted_prompt.replace('{js_content}', page.js_content)
+            formatted_prompt = formatted_prompt.replace('{css_content}', page.css_content)
+            formatted_prompt = formatted_prompt.replace('{update_prompt}', update_prompt)
+            formatted_prompt = formatted_prompt.replace('{datastore_model}', datastore_model)
             
             message = self.claude.messages.create(
                 model="claude-3-sonnet-20240229",
-                max_tokens=2000,
+                max_tokens=4096,
                 temperature=0.7,
                 messages=[
                     {
@@ -376,27 +584,70 @@ class AppGenerator:
         try:
             logger.info(f"Starting app update for app {app.id}")
 
+            # Get the DataStore model definition
+            datastore_model = '''class DataStore(models.Model):
+    VALUE_TYPES = [
+        ('str', 'String'),
+        ('int', 'Integer'),
+        ('float', 'Float'),
+        ('bool', 'Boolean'),
+        ('json', 'JSON'),
+        ('date', 'Date'),
+        ('datetime', 'DateTime'),
+    ]
+
+    app = models.ForeignKey(App, on_delete=models.CASCADE, related_name='data_store')
+    key = models.CharField(max_length=100)
+    value = models.TextField()
+    value_type = models.CharField(max_length=10, choices=VALUE_TYPES)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['app', 'key']
+
+    def get_typed_value(self):
+        """Returns the value converted to its proper type"""
+        try:
+            if self.value_type == 'str':
+                return self.value
+            elif self.value_type == 'int':
+                return int(self.value)
+            elif self.value_type == 'float':
+                return float(self.value)
+            elif self.value_type == 'bool':
+                return self.value.lower() == 'true'
+            elif self.value_type == 'json':
+                return json.loads(self.value)
+            elif self.value_type == 'date':
+                return datetime.strptime(self.value, '%Y-%m-%d').date()
+            elif self.value_type == 'datetime':
+                return datetime.strptime(self.value, '%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return None
+        return self.value'''
+
             # Load and format the app update prompt
             prompt_template = self._load_prompt_template('app_update')
-            formatted_prompt = prompt_template.format(
-                app_name=app.name,
-                app_description=app.description,
-                data_structure=json.dumps([{
-                    'key': ds.key,
-                    'value_type': ds.value_type,
-                    'value': ds.value
-                } for ds in app.data_store.all()], indent=2),
-                pages=json.dumps([{
-                    'name': p.name,
-                    'slug': p.slug,
-                    'description': 'Existing page'
-                } for p in app.pages.all()], indent=2),
-                update_content=update_content
-            )
+            # Replace placeholders with actual values
+            formatted_prompt = prompt_template.replace('{app_name}', app.name)
+            formatted_prompt = formatted_prompt.replace('{app_description}', app.description)
+            formatted_prompt = formatted_prompt.replace('{data_structure}', json.dumps([{
+                'key': ds.key,
+                'value_type': ds.value_type,
+                'value': ds.value
+            } for ds in app.data_store.all()], indent=2))
+            formatted_prompt = formatted_prompt.replace('{pages}', json.dumps([{
+                'name': p.name,
+                'slug': p.slug,
+                'description': 'Existing page'
+            } for p in app.pages.all()], indent=2))
+            formatted_prompt = formatted_prompt.replace('{update_content}', update_content)
+            formatted_prompt = formatted_prompt.replace('{datastore_model}', datastore_model)
 
             message = self.claude.messages.create(
                 model="claude-3-sonnet-20240229",
-                max_tokens=2000,
+                max_tokens=4096,
                 temperature=0.7,
                 messages=[
                     {
@@ -585,27 +836,100 @@ export default class extends Controller {
 '''
                 # Define the CSS
                 css = r'''
+/* Base styles */
 .page-details {
   padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+/* Header styles */
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e5e7eb;
 }
 
-.page-actions {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
+.page-header h1 {
+  color: #111827;
+  font-size: 1.875rem;
+  font-weight: 600;
 }
 
+/* Form styles */
+.form-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 0.5rem;
+}
+
+.form-control {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  background-color: #ffffff;
+  color: #111827;
+  font-size: 0.875rem;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+/* Button styles */
+.btn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background-color: #3b82f6;
+  color: #ffffff;
+  border: none;
+}
+
+.btn-primary:hover {
+  background-color: #2563eb;
+}
+
+.btn-danger {
+  background-color: #ef4444;
+  color: #ffffff;
+  border: none;
+}
+
+.btn-danger:hover {
+  background-color: #dc2626;
+}
+
+/* Search box */
 .search-box {
   min-width: 300px;
 }
 
+.search-box input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  background-color: #ffffff;
+}
+
+/* Data grid */
 .data-grid {
   display: grid;
   gap: 1rem;
@@ -616,8 +940,9 @@ export default class extends Controller {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
-  padding: 1rem;
-  background: #f8f9fa;
+  padding: 1.25rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
   border-radius: 0.5rem;
   align-items: center;
 }
@@ -625,24 +950,64 @@ export default class extends Controller {
 .data-cell {
   flex: 1;
   min-width: 200px;
+  color: #374151;
 }
 
-.row-actions {
-  display: flex;
-  gap: 0.5rem;
+.data-cell strong {
+  color: #111827;
+  font-weight: 500;
+  margin-right: 0.5rem;
 }
 
+/* Modal styles */
+.modal-content {
+  background: #ffffff;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.modal-header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-title {
+  color: #111827;
+  font-weight: 600;
+}
+
+.modal-body {
+  padding: 1.5rem;
+}
+
+/* Pagination */
 .pagination {
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 1rem;
+  margin-top: 2rem;
+}
+
+.pagination a {
+  padding: 0.5rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  color: #374151;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.pagination a:hover {
+  background-color: #f3f4f6;
 }
 
 .current-page {
   padding: 0.5rem 1rem;
-  background: #f8f9fa;
-  border-radius: 0.25rem;
+  background: #f3f4f6;
+  border-radius: 0.375rem;
+  color: #374151;
+  font-weight: 500;
 }
 '''
                 # Create or update the page
@@ -664,15 +1029,26 @@ export default class extends Controller {
                 # Create the standard context queries
                 ContextQuery.objects.create(
                     page=page,
+                    context_key='data',
+                    query_content='data = DataStore.objects.filter(app=app).values()',
+                    query_type='orm'
+                )
+
+                ContextQuery.objects.create(
+                    page=page,
                     context_key='paginated_data',
-                    query_content='from django.core.paginator import Paginator\npaginator = Paginator(DataStore.objects.filter(app=app), 10)  # 10 items per page\npage_number = request.GET.get("page", 1)\npaginated_data = paginator.get_page(page_number)',
+                    query_content='''from django.core.paginator import Paginator
+data = DataStore.objects.filter(app=app).values()
+paginator = Paginator(data, 10)  # 10 items per page
+page_number = request.GET.get("page", 1)
+paginated_data = paginator.get_page(page_number)''',
                     query_type='orm'
                 )
 
                 ContextQuery.objects.create(
                     page=page,
                     context_key='data_structure',
-                    query_content='data_structure = [{"key": ds.key, "value_type": ds.value_type, "input_type": "text" if ds.value_type in ["str", "date", "datetime"] else ds.value_type} for ds in DataStore.objects.filter(app=app)]',
+                    query_content='data_structure = [{"key": ds.key, "value_type": ds.value_type, "input_type": "text" if ds.value_type in ["str", "date", "datetime"] else "number" if ds.value_type in ["int", "float"] else "checkbox" if ds.value_type == "bool" else "textarea" if ds.value_type == "json" else "text"} for ds in DataStore.objects.filter(app=app)]',
                     query_type='orm'
                 )
 
@@ -681,4 +1057,213 @@ export default class extends Controller {
 
         except Exception as e:
             logger.error(f"Error updating app {app.id}: {str(e)}")
+            raise 
+
+    def _get_app_metadata(self) -> dict:
+        """Get basic app metadata including name, description, and theme."""
+        try:
+            metadata_template = self._load_prompt_template('app_metadata')
+            formatted_prompt = metadata_template.replace('{prompt_content}', self.prompt.content)
+            
+            message = self.claude.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=1000,
+                temperature=0.7,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": formatted_prompt}]
+                    }
+                ]
+            )
+            
+            response_text = self._clean_json_response(message.content[0].text.strip())
+            return json.loads(response_text)
+        except Exception as e:
+            logger.error(f"Error getting app metadata: {str(e)}")
+            raise
+
+    def _get_app_pages_structure(self, app_metadata: dict) -> list:
+        """Get the structure of pages for the app."""
+        try:
+            pages_template = self._load_prompt_template('app_pages')
+            formatted_prompt = pages_template.replace('{prompt_content}', self.prompt.content)
+            formatted_prompt = formatted_prompt.replace('{app_metadata}', json.dumps(app_metadata))
+            
+            message = self.claude.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=2000,
+                temperature=0.7,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": formatted_prompt}]
+                    }
+                ]
+            )
+            
+            response_text = self._clean_json_response(message.content[0].text.strip())
+            return json.loads(response_text)
+        except Exception as e:
+            logger.error(f"Error getting app pages structure: {str(e)}")
+            raise
+
+    def _get_page_template(self, page_name: str, page_description: str) -> str:
+        """Get the HTML template for a specific page."""
+        try:
+            template_prompt = self._load_prompt_template('page_template')
+            formatted_prompt = template_prompt.replace('{page_name}', page_name)
+            formatted_prompt = formatted_prompt.replace('{page_description}', page_description)
+            
+            message = self.claude.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=2000,
+                temperature=0.7,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": formatted_prompt}]
+                    }
+                ]
+            )
+            
+            return message.content[0].text.strip()
+        except Exception as e:
+            logger.error(f"Error getting page template for {page_name}: {str(e)}")
+            raise
+
+    def _get_page_context(self, page_name: str, template: str) -> list:
+        """Get the context variables needed for a page template."""
+        try:
+            context_prompt = self._load_prompt_template('page_context')
+            formatted_prompt = context_prompt.replace('{page_name}', page_name)
+            formatted_prompt = formatted_prompt.replace('{template}', template)
+            
+            message = self.claude.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=1000,
+                temperature=0.7,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": formatted_prompt}]
+                    }
+                ]
+            )
+            
+            response_text = self._clean_json_response(message.content[0].text.strip())
+            return json.loads(response_text)
+        except Exception as e:
+            logger.error(f"Error getting page context for {page_name}: {str(e)}")
+            raise
+
+    def _get_page_logic(self, page_name: str, template: str, context: list) -> str:
+        """Get the JavaScript logic for a specific page."""
+        try:
+            logic_prompt = self._load_prompt_template('page_logic')
+            formatted_prompt = logic_prompt.replace('{page_name}', page_name)
+            formatted_prompt = formatted_prompt.replace('{template}', template)
+            formatted_prompt = formatted_prompt.replace('{context}', json.dumps(context))
+            
+            message = self.claude.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=2000,
+                temperature=0.7,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": formatted_prompt}]
+                    }
+                ]
+            )
+            
+            return message.content[0].text.strip()
+        except Exception as e:
+            logger.error(f"Error getting page logic for {page_name}: {str(e)}")
+            raise
+
+    def _get_component_styles(self, theme: dict) -> str:
+        """Get reusable component styles based on theme."""
+        try:
+            style_prompt = self._load_prompt_template('component_styles')
+            formatted_prompt = style_prompt.replace('{theme}', json.dumps(theme))
+            
+            message = self.claude.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=2000,
+                temperature=0.7,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": formatted_prompt}]
+                    }
+                ]
+            )
+            
+            return message.content[0].text.strip()
+        except Exception as e:
+            logger.error(f"Error getting component styles: {str(e)}")
+            raise 
+
+    def generate_app_v2(self) -> App:
+        """Generate an app using the split prompting approach for better reliability."""
+        try:
+            # Step 1: Get app metadata
+            app_metadata = self._get_app_metadata()
+            
+            # Create the app
+            app = App.objects.create(
+                organization=self.organization,
+                name=app_metadata['name'],
+                description=app_metadata.get('description', ''),
+                prompt=self.prompt
+            )
+            
+            # Step 2: Get pages structure
+            pages_structure = self._get_app_pages_structure(app_metadata)
+            
+            # Step 3: Generate each page with split concerns
+            for page_data in pages_structure:
+                # Get page template
+                template = self._get_page_template(
+                    page_data['name'],
+                    page_data.get('description', '')
+                )
+                
+                # Get page context
+                context = self._get_page_context(page_data['name'], template)
+                
+                # Get page logic
+                js_logic = self._get_page_logic(page_data['name'], template, context)
+                
+                # Get component styles
+                component_styles = self._get_component_styles(app_metadata.get('theme', {}))
+                
+                # Create the page
+                AppPage.objects.create(
+                    app=app,
+                    name=page_data['name'],
+                    slug=page_data.get('slug', ''),
+                    template=template,
+                    js=js_logic,
+                    css=component_styles
+                )
+                
+                # Create context queries
+                for ctx in context:
+                    ContextQuery.objects.create(
+                        page=page,
+                        key=ctx['key'],
+                        query=ctx['query'],
+                        description=ctx.get('description', '')
+                    )
+            
+            # Step 4: Set up initial data structure if defined
+            if 'data_structure' in app_metadata:
+                self._setup_data_structure(app, app_metadata['data_structure'])
+            
+            return app
+            
+        except Exception as e:
+            logger.error(f"Error in generate_app_v2: {str(e)}")
             raise 
