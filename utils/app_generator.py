@@ -44,9 +44,19 @@ class AppGenerator:
             except json.JSONDecodeError:
                 pass
 
-            # Find the first { and last }
-            start = response_text.find('{')
-            end = response_text.rindex('}') + 1
+            # Try to find JSON object or array
+            obj_start = response_text.find('{')
+            arr_start = response_text.find('[')
+            
+            # Determine if we're dealing with an object or array
+            if obj_start >= 0 and (arr_start < 0 or obj_start < arr_start):
+                start = obj_start
+                end = response_text.rindex('}') + 1
+            elif arr_start >= 0:
+                start = arr_start
+                end = response_text.rindex(']') + 1
+            else:
+                return response_text
             
             if start >= 0 and end > start:
                 json_text = response_text[start:end]

@@ -45,13 +45,39 @@ Guidelines for TEMPLATE:
 6. Use || for all HTML attribute values
 7. Use (( )) for all template variables
 8. Use (% %) for all template tags
+9. Include professional UI components:
+   - Responsive navigation
+   - Proper form layouts with validation
+   - Data tables with sorting/filtering
+   - Search functionality
+   - Pagination controls
+   - Loading states
+   - Error handling UI
+   - Success/failure notifications
+   - Modal dialogs
+   - Tooltips and popovers
+10. DataStore Integration:
+    - Form submissions to store data
+    - Data filtering and search
+    - Data visualization where appropriate
+    - CRUD operations UI
+    - Batch operations where needed
 
 Guidelines for JAVASCRIPT:
-1. Use vanilla JavaScript
+1. Use Stimulus controllers
 2. Follow ES6+ best practices
 3. Implement proper error handling
 4. Use event delegation
 5. Clean up resources properly
+6. Include DataStore operations:
+   - Form submission handling
+   - Data filtering
+   - Search functionality
+   - Pagination
+   - Sorting
+   - CRUD operations
+   - Batch operations
+   - Real-time updates
 
 Guidelines for METADATA:
 1. Valid JSON format
@@ -59,13 +85,234 @@ Guidelines for METADATA:
 3. Efficient database queries
 4. Proper error handling
 5. Consider pagination
+6. Include DataStore queries for:
+   - Data listing
+   - Filtering
+   - Search
+   - Aggregations
+   - Related data
 
 Example Template:
-<div class=||container|| data-page=||example||>
-  <h1 class=||title||>((page_title))</h1>
-  (% if items %)
-    (% for item in items %)
-      <div class=||item||>((item.name))</div>
-    (% endfor %)
-  (% endif %)
+<div class=||container-fluid page-container|| data-controller=||page|| data-page=||example||>
+  <!-- Header Section -->
+  <header class=||page-header bg-light border-bottom py-4 mb-4||>
+    <div class=||container||>
+      <div class=||row align-items-center||>
+        <div class=||col||>
+          <h1 class=||h3 mb-0||>((page_title))</h1>
+        </div>
+        <div class=||col-auto||>
+          <button class=||btn btn-primary|| 
+                  data-action=||click->page#openCreateModal|| 
+                  aria-label=||Create New||>
+            <i class=||bi bi-plus-lg||></i> Create New
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <div class=||container||>
+    <!-- Filters and Search -->
+    <div class=||card mb-4||>
+      <div class=||card-body||>
+        <form data-action=||submit->page#filter|| class=||row g-3||>
+          <div class=||col-md-4||>
+            <label class=||form-label||>Search</label>
+            <input type=||text|| 
+                   class=||form-control|| 
+                   data-page-target=||searchInput||
+                   placeholder=||Search...||>
+          </div>
+          <div class=||col-md-3||>
+            <label class=||form-label||>Filter By</label>
+            <select class=||form-select|| data-page-target=||filterSelect||>
+              <option value=||||>All</option>
+              (% for option in filter_options %)
+              <option value=||((option.value))||>((option.label))</option>
+              (% endfor %)
+            </select>
+          </div>
+          <div class=||col-md-3||>
+            <label class=||form-label||>Sort By</label>
+            <select class=||form-select|| data-page-target=||sortSelect||>
+              (% for option in sort_options %)
+              <option value=||((option.value))||>((option.label))</option>
+              (% endfor %)
+            </select>
+          </div>
+          <div class=||col-md-2 d-flex align-items-end||>
+            <button type=||submit|| class=||btn btn-secondary w-100||>
+              Apply Filters
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class=||card||>
+      <div class=||card-body|| data-page-target=||tableContainer||>
+        <div class=||table-responsive||>
+          <table class=||table table-hover||>
+            <thead>
+              <tr>
+                (% for column in columns %)
+                <th scope=||col|| 
+                    class=||sortable|| 
+                    data-action=||click->page#sort|| 
+                    data-column=||((column.key))||>
+                  ((column.label))
+                  <i class=||bi bi-arrow-down-up||></i>
+                </th>
+                (% endfor %)
+                <th scope=||col|| class=||text-end||>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              (% for item in items %)
+              <tr>
+                (% for column in columns %)
+                <td>((item[column.key]))</td>
+                (% endfor %)
+                <td class=||text-end||>
+                  <button class=||btn btn-sm btn-outline-primary|| 
+                          data-action=||click->page#edit|| 
+                          data-item-id=||((item.id))||>
+                    Edit
+                  </button>
+                  <button class=||btn btn-sm btn-outline-danger|| 
+                          data-action=||click->page#delete|| 
+                          data-item-id=||((item.id))||>
+                    Delete
+                  </button>
+                </td>
+              </tr>
+              (% endfor %)
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <nav aria-label=||Page navigation|| class=||mt-4||>
+          <ul class=||pagination justify-content-center||>
+            (% if has_previous %)
+            <li class=||page-item||>
+              <a class=||page-link|| 
+                 href=||#|| 
+                 data-action=||click->page#previousPage||>Previous</a>
+            </li>
+            (% endif %)
+            
+            (% for page_num in page_range %)
+            <li class=||page-item (% if page_num == current_page %)active(% endif %)||>
+              <a class=||page-link|| 
+                 href=||#|| 
+                 data-action=||click->page#goToPage|| 
+                 data-page=||((page_num))||>((page_num))</a>
+            </li>
+            (% endfor %)
+            
+            (% if has_next %)
+            <li class=||page-item||>
+              <a class=||page-link|| 
+                 href=||#|| 
+                 data-action=||click->page#nextPage||>Next</a>
+            </li>
+            (% endif %)
+          </ul>
+        </nav>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create/Edit Modal -->
+  <div class=||modal fade|| 
+       id=||itemModal|| 
+       tabindex=||-1|| 
+       aria-labelledby=||itemModalLabel|| 
+       aria-hidden=||true||>
+    <div class=||modal-dialog||>
+      <div class=||modal-content||>
+        <div class=||modal-header||>
+          <h5 class=||modal-title|| id=||itemModalLabel||>((modal_title))</h5>
+          <button type=||button|| 
+                  class=||btn-close|| 
+                  data-bs-dismiss=||modal|| 
+                  aria-label=||Close||></button>
+        </div>
+        <div class=||modal-body||>
+          <form id=||itemForm|| data-action=||submit->page#saveItem||>
+            (% for field in form_fields %)
+            <div class=||mb-3||>
+              <label class=||form-label||>((field.label))</label>
+              <input type=||((field.type))|| 
+                     class=||form-control|| 
+                     name=||((field.name))|| 
+                     value=||((field.value))|| 
+                     required=||((field.required))||>
+            </div>
+            (% endfor %)
+          </form>
+        </div>
+        <div class=||modal-footer||>
+          <button type=||button|| 
+                  class=||btn btn-secondary|| 
+                  data-bs-dismiss=||modal||>Cancel</button>
+          <button type=||submit|| 
+                  form=||itemForm|| 
+                  class=||btn btn-primary||>Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div class=||modal fade|| 
+       id=||deleteModal|| 
+       tabindex=||-1|| 
+       aria-labelledby=||deleteModalLabel|| 
+       aria-hidden=||true||>
+    <div class=||modal-dialog||>
+      <div class=||modal-content||>
+        <div class=||modal-header||>
+          <h5 class=||modal-title|| id=||deleteModalLabel||>Confirm Delete</h5>
+          <button type=||button|| 
+                  class=||btn-close|| 
+                  data-bs-dismiss=||modal|| 
+                  aria-label=||Close||></button>
+        </div>
+        <div class=||modal-body||>
+          Are you sure you want to delete this item?
+        </div>
+        <div class=||modal-footer||>
+          <button type=||button|| 
+                  class=||btn btn-secondary|| 
+                  data-bs-dismiss=||modal||>Cancel</button>
+          <button type=||button|| 
+                  class=||btn btn-danger|| 
+                  data-action=||click->page#confirmDelete||>Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notifications -->
+  <div class=||toast-container position-fixed bottom-0 end-0 p-3||>
+    <div class=||toast|| 
+         role=||alert|| 
+         aria-live=||assertive|| 
+         aria-atomic=||true|| 
+         data-page-target=||toast||>
+      <div class=||toast-header||>
+        <strong class=||me-auto|| data-page-target=||toastTitle||></strong>
+        <button type=||button|| 
+                class=||btn-close|| 
+                data-bs-dismiss=||toast|| 
+                aria-label=||Close||></button>
+      </div>
+      <div class=||toast-body|| data-page-target=||toastMessage||></div>
+    </div>
+  </div>
 </div> 

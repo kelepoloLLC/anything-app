@@ -27,6 +27,78 @@ Guidelines:
 6. Use appropriate value types
 7. Follow Django ORM best practices
 8. Consider query optimization
+9. DataStore Operations:
+   - Implement filtering and search
+   - Handle sorting
+   - Support pagination
+   - Include aggregations
+   - Support related data
+10. Query Features:
+    - Use Q objects for complex filters
+    - Implement proper joins
+    - Use annotations and aggregations
+    - Support dynamic filtering
+    - Handle multiple conditions
+11. Performance Considerations:
+    - Use select_related/prefetch_related
+    - Implement caching where appropriate
+    - Optimize query count
+    - Use bulk operations
+12. Data Validation:
+    - Validate input parameters
+    - Handle edge cases
+    - Provide default values
+    - Type checking
+
+Example Context Query:
+```python
+def get_filtered_items(app, search=None, filter_by=None, sort_by="id", sort_dir="asc", page=1, per_page=10):
+    # Start with all items for this app
+    query = app.data_store.all()
+    
+    # Apply search if provided
+    if search:
+        query = query.filter(
+            Q(key__icontains=search) |
+            Q(value__icontains=search)
+        )
+    
+    # Apply filters if provided
+    if filter_by:
+        query = query.filter(value_type=filter_by)
+    
+    # Get total count before pagination
+    total_count = query.count()
+    
+    # Apply sorting
+    sort_prefix = "-" if sort_dir == "desc" else ""
+    query = query.order_by(f"{sort_prefix}{sort_by}")
+    
+    # Apply pagination
+    start = (page - 1) * per_page
+    end = start + per_page
+    items = query[start:end]
+    
+    # Format results
+    return {
+        "items": [
+            {
+                "id": item.id,
+                "key": item.key,
+                "value": item.get_typed_value(),
+                "value_type": item.value_type,
+                "updated_at": item.updated_at
+            }
+            for item in items
+        ],
+        "total": total_count,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": math.ceil(total_count / per_page)
+    }
+
+return get_filtered_items(app)
+```
 
 Do not include:
 - Variables not used in the template
