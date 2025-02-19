@@ -1,13 +1,13 @@
-You are a specialized AI focused on creating Stimulus JavaScript controllers.
-Your task is to generate clean, efficient JavaScript code for page functionality.
+You are a specialized AI focused on creating clean, modular JavaScript.
+Your task is to generate efficient vanilla JavaScript code for page functionality.
 
 Page Information:
 - Name: {page_name}
 - Template: {template}
-- Context Variables: {context}
+- Base CSS: {base_css}
 
 Guidelines:
-1. Use Stimulus.js controller format
+1. Use ES6+ features
 2. Follow single responsibility principle
 3. Implement proper error handling
 4. Use async/await for API calls
@@ -25,86 +25,123 @@ Guidelines:
     - CRUD operations
     - Real-time updates
 
-Controller Structure:
+Module Structure:
 ```javascript
-// page-name_controller.js
-import { Controller } from "@hotwired/stimulus"
-import { Toast } from "bootstrap"
+// {page_name}.js
+class PageManager {
+    constructor() {
+        // DOM Elements
+        this.searchInput = document.querySelector('[data-search]')
+        this.filterSelect = document.querySelector('[data-filter]')
+        this.sortSelect = document.querySelector('[data-sort]')
+        this.tableContainer = document.querySelector('[data-table-container]')
+        this.toast = document.querySelector('[data-toast]')
+        this.toastTitle = document.querySelector('[data-toast-title]')
+        this.toastMessage = document.querySelector('[data-toast-message]')
 
-export default class extends Controller {
-    static targets = [
-        "searchInput",
-        "filterSelect",
-        "sortSelect",
-        "tableContainer",
-        "toast",
-        "toastTitle",
-        "toastMessage"
-    ]
+        // State
+        this.state = {
+            currentPage: 1,
+            itemsPerPage: 10,
+            totalItems: 0,
+            sortColumn: 'id',
+            sortDirection: 'asc',
+            filterValue: '',
+            searchQuery: ''
+        }
 
-    static values = {
-        currentPage: Number,
-        itemsPerPage: Number,
-        totalItems: Number,
-        sortColumn: String,
-        sortDirection: String,
-        filterValue: String,
-        searchQuery: String
+        // Bind event handlers
+        this.bindEvents()
+        
+        // Initialize
+        this.initialize()
     }
 
-    connect() {
-        // Initialize controller
-        this.initializeState()
-        this.loadData()
+    bindEvents() {
+        // Search and Filter
+        this.searchInput?.addEventListener('input', this.debounce(() => this.handleSearch(), 300))
+        this.filterSelect?.addEventListener('change', () => this.handleFilter())
+        this.sortSelect?.addEventListener('change', () => this.handleSort())
+
+        // Table Actions - Using event delegation
+        this.tableContainer?.addEventListener('click', (e) => {
+            const target = e.target
+            if (target.matches('[data-action="edit"]')) {
+                this.handleEdit(target.dataset.itemId)
+            } else if (target.matches('[data-action="delete"]')) {
+                this.handleDelete(target.dataset.itemId)
+            } else if (target.matches('[data-action="sort"]')) {
+                this.handleColumnSort(target.dataset.column)
+            }
+        })
+
+        // Pagination
+        document.querySelectorAll('[data-page]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                this.handlePageChange(parseInt(e.target.dataset.page))
+            })
+        })
+
+        // Form Submission
+        const form = document.querySelector('[data-form]')
+        form?.addEventListener('submit', (e) => this.handleSubmit(e))
+
+        // Modal Actions
+        const createBtn = document.querySelector('[data-action="create"]')
+        createBtn?.addEventListener('click', () => this.handleCreate())
+
+        const confirmDeleteBtn = document.querySelector('[data-action="confirm-delete"]')
+        confirmDeleteBtn?.addEventListener('click', () => this.handleConfirmDelete())
     }
 
-    async initializeState() {
-        // Initialize state with default values
-        this.currentPageValue = 1
-        this.itemsPerPageValue = 10
-        this.sortColumnValue = "id"
-        this.sortDirectionValue = "asc"
-        this.filterValueValue = ""
-        this.searchQueryValue = ""
+    async initialize() {
+        try {
+            await this.loadData()
+        } catch (error) {
+            console.error('Failed to initialize page:', error)
+            this.showToast('Error', 'Failed to initialize page', 'error')
+        }
     }
 
     async loadData() {
         try {
             const params = new URLSearchParams({
-                page: this.currentPageValue,
-                per_page: this.itemsPerPageValue,
-                sort_column: this.sortColumnValue,
-                sort_direction: this.sortDirectionValue,
-                filter: this.filterValueValue,
-                search: this.searchQueryValue
+                page: this.state.currentPage,
+                per_page: this.state.itemsPerPage,
+                sort_column: this.state.sortColumn,
+                sort_direction: this.state.sortDirection,
+                filter: this.state.filterValue,
+                search: this.state.searchQuery
             })
 
             const response = await fetch(`/api/data-store/?${params}`)
             if (!response.ok) throw new Error('Failed to load data')
             
             const data = await response.json()
-            this.totalItemsValue = data.total
+            this.state.totalItems = data.total
             this.updateTable(data.items)
             this.updatePagination()
         } catch (error) {
-            this.showToast('Error', 'Failed to load data', 'error')
             console.error('Error loading data:', error)
+            this.showToast('Error', 'Failed to load data', 'error')
+            throw error
         }
     }
 
     updateTable(items) {
-        // Update table contents with new data
+        if (!this.tableContainer) return
+
         const tableHtml = items.map(item => `
             <tr>
                 ${this.columns.map(col => `<td>${item[col.key]}</td>`).join('')}
                 <td class="text-end">
                     <button class="btn btn-sm btn-outline-primary"
-                            data-action="click->page#edit"
+                            data-action="edit"
                             data-item-id="${item.id}">
                         Edit
                     </button>
                     <button class="btn btn-sm btn-outline-danger"
-                            data-action="click->page#delete"
+                            data-action="delete"
                             data-item-id="${item.id}">
                         Delete
                     </button>
@@ -112,48 +149,69 @@ export default class extends Controller {
             </tr>
         `).join('')
 
-        const tbody = this.tableContainerTarget.querySelector('tbody')
-        tbody.innerHTML = tableHtml
+        const tbody = this.tableContainer.querySelector('tbody')
+        if (tbody) {
+            tbody.innerHTML = tableHtml
+        }
     }
 
     updatePagination() {
-        const totalPages = Math.ceil(this.totalItemsValue / this.itemsPerPageValue)
-        // Update pagination UI
+        const totalPages = Math.ceil(this.state.totalItems / this.state.itemsPerPage)
+        const paginationContainer = document.querySelector('[data-pagination]')
+        if (!paginationContainer) return
+
+        const pages = Array.from({ length: totalPages }, (_, i) => i + 1)
+        const paginationHtml = pages.map(page => `
+            <li class="page-item ${page === this.state.currentPage ? 'active' : ''}">
+                <button class="page-link" data-page="${page}">${page}</button>
+            </li>
+        `).join('')
+
+        paginationContainer.innerHTML = paginationHtml
     }
 
-    async filter(event) {
-        event.preventDefault()
-        this.filterValueValue = this.filterSelectTarget.value
-        this.currentPageValue = 1
+    async handleSearch() {
+        this.state.searchQuery = this.searchInput.value
+        this.state.currentPage = 1
         await this.loadData()
     }
 
-    async search() {
-        this.searchQueryValue = this.searchInputTarget.value
-        this.currentPageValue = 1
+    async handleFilter() {
+        this.state.filterValue = this.filterSelect.value
+        this.state.currentPage = 1
         await this.loadData()
     }
 
-    async sort(event) {
-        const column = event.currentTarget.dataset.column
-        if (column === this.sortColumnValue) {
-            this.sortDirectionValue = this.sortDirectionValue === 'asc' ? 'desc' : 'asc'
+    async handleSort() {
+        this.state.sortColumn = this.sortSelect.value
+        await this.loadData()
+    }
+
+    async handleColumnSort(column) {
+        if (column === this.state.sortColumn) {
+            this.state.sortDirection = this.state.sortDirection === 'asc' ? 'desc' : 'asc'
         } else {
-            this.sortColumnValue = column
-            this.sortDirectionValue = 'asc'
+            this.state.sortColumn = column
+            this.state.sortDirection = 'asc'
         }
         await this.loadData()
     }
 
-    async openCreateModal() {
+    async handlePageChange(page) {
+        if (page !== this.state.currentPage) {
+            this.state.currentPage = page
+            await this.loadData()
+        }
+    }
+
+    handleCreate() {
         this.currentItemId = null
         this.resetForm()
         const modal = new bootstrap.Modal(document.getElementById('itemModal'))
         modal.show()
     }
 
-    async edit(event) {
-        const itemId = event.currentTarget.dataset.itemId
+    async handleEdit(itemId) {
         try {
             const response = await fetch(`/api/data-store/${itemId}/`)
             if (!response.ok) throw new Error('Failed to load item')
@@ -165,19 +223,18 @@ export default class extends Controller {
             const modal = new bootstrap.Modal(document.getElementById('itemModal'))
             modal.show()
         } catch (error) {
-            this.showToast('Error', 'Failed to load item details', 'error')
             console.error('Error loading item:', error)
+            this.showToast('Error', 'Failed to load item details', 'error')
         }
     }
 
-    async delete(event) {
-        const itemId = event.currentTarget.dataset.itemId
+    handleDelete(itemId) {
         this.currentItemId = itemId
         const modal = new bootstrap.Modal(document.getElementById('deleteModal'))
         modal.show()
     }
 
-    async confirmDelete() {
+    async handleConfirmDelete() {
         try {
             const response = await fetch(`/api/data-store/${this.currentItemId}/`, {
                 method: 'DELETE',
@@ -194,12 +251,12 @@ export default class extends Controller {
             const modal = bootstrap.Modal.getInstance(document.getElementById('deleteModal'))
             modal.hide()
         } catch (error) {
-            this.showToast('Error', 'Failed to delete item', 'error')
             console.error('Error deleting item:', error)
+            this.showToast('Error', 'Failed to delete item', 'error')
         }
     }
 
-    async saveItem(event) {
+    async handleSubmit(event) {
         event.preventDefault()
         const formData = new FormData(event.target)
         const data = Object.fromEntries(formData.entries())
@@ -228,61 +285,52 @@ export default class extends Controller {
             const modal = bootstrap.Modal.getInstance(document.getElementById('itemModal'))
             modal.hide()
         } catch (error) {
-            this.showToast('Error', 'Failed to save item', 'error')
             console.error('Error saving item:', error)
+            this.showToast('Error', 'Failed to save item', 'error')
         }
     }
 
     showToast(title, message, type = 'info') {
-        this.toastTitleTarget.textContent = title
-        this.toastMessageTarget.textContent = message
-        this.toastTarget.classList.remove('bg-success', 'bg-danger', 'bg-info')
-        this.toastTarget.classList.add(`bg-${type === 'error' ? 'danger' : type}`)
+        if (!this.toast || !this.toastTitle || !this.toastMessage) return
+
+        this.toastTitle.textContent = title
+        this.toastMessage.textContent = message
+        this.toast.classList.remove('bg-success', 'bg-danger', 'bg-info')
+        this.toast.classList.add(`bg-${type === 'error' ? 'danger' : type}`)
         
-        const toast = new Toast(this.toastTarget)
+        const toast = new bootstrap.Toast(this.toast)
         toast.show()
     }
 
     getCsrfToken() {
-        return document.querySelector('[name=csrfmiddlewaretoken]').value
+        return document.querySelector('[name=csrfmiddlewaretoken]')?.value
     }
 
-    // Pagination methods
-    async previousPage() {
-        if (this.currentPageValue > 1) {
-            this.currentPageValue--
-            await this.loadData()
-        }
-    }
-
-    async nextPage() {
-        const totalPages = Math.ceil(this.totalItemsValue / this.itemsPerPageValue)
-        if (this.currentPageValue < totalPages) {
-            this.currentPageValue++
-            await this.loadData()
-        }
-    }
-
-    async goToPage(event) {
-        const page = parseInt(event.currentTarget.dataset.page)
-        if (page !== this.currentPageValue) {
-            this.currentPageValue = page
-            await this.loadData()
-        }
-    }
-
-    // Helper methods
     resetForm() {
-        const form = document.getElementById('itemForm')
-        form.reset()
+        const form = document.querySelector('[data-form]')
+        form?.reset()
     }
 
     populateForm(item) {
-        const form = document.getElementById('itemForm')
+        const form = document.querySelector('[data-form]')
+        if (!form) return
+
         Object.entries(item).forEach(([key, value]) => {
             const input = form.elements[key]
             if (input) input.value = value
         })
+    }
+
+    debounce(func, wait) {
+        let timeout
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout)
+                func(...args)
+            }
+            clearTimeout(timeout)
+            timeout = setTimeout(later, wait)
+        }
     }
 
     get columns() {
@@ -294,22 +342,29 @@ export default class extends Controller {
         ]
     }
 }
+
+// Initialize the page manager
+document.addEventListener('DOMContentLoaded', () => {
+    new PageManager()
+})
 ```
 
 Requirements:
-- Must use Stimulus.js
-- Must handle all CRUD operations
-- Must implement proper error handling
-- Must use Bootstrap components
-- Must handle DataStore operations efficiently
-- Must implement proper state management
-- Must use proper event delegation
-- Must clean up resources properly
+1. Must use vanilla JavaScript (ES6+)
+2. Must handle all CRUD operations
+3. Must implement proper error handling
+4. Must use Bootstrap components
+5. Must handle DataStore operations efficiently
+6. Must implement proper state management
+7. Must use event delegation where appropriate
+8. Must clean up resources properly
 
 Do not include:
-- External framework dependencies beyond Stimulus and Bootstrap
-- Inline styles
-- Hard-coded values
-- Complex business logic in the frontend
+1. External framework dependencies beyond Bootstrap
+2. Inline styles
+3. Hard-coded values
+4. Complex business logic in the frontend
+
+Respond with the JavaScript code only. Do not include any explanations or additional content. 
 
 Respond with the JavaScript code only. Do not include any explanations or additional content. 

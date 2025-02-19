@@ -158,6 +158,9 @@ class AppGenerator:
         try:
             logger.info(f"Requesting initial app structure from Claude for prompt {self.prompt.id}")
             
+            # First, get the base CSS that will be used across all pages
+            base_css = self._get_component_styles(self.prompt.content)
+            
             # Load and format the app structure prompt
             prompt_template = self._load_prompt_template('app_structure')
             formatted_prompt = prompt_template.replace('{prompt_content}', self.prompt.content)
@@ -179,6 +182,7 @@ class AppGenerator:
                 response_text = self._clean_json_response(message.content[0].text.strip())
                 logger.info(f"Attempting to parse initial structure: {response_text}")
                 initial_structure = json.loads(response_text)
+                initial_structure['base_css'] = base_css
                 logger.info(f"Successfully parsed initial app structure for prompt {self.prompt.id}")
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse initial structure: {str(e)}")
@@ -288,10 +292,17 @@ class AppGenerator:
                 # Parse the response into sections
                 sections = self._parse_llm_response(page_message.content[0].text.strip())
                 
-                # Construct the page structure
-                page_structure = sections['METADATA']
-                page_structure['template'] = sections['TEMPLATE']
-                page_structure['js'] = sections.get('JAVASCRIPT', '')  # JavaScript is optional
+                # Get the base template
+                template = sections['TEMPLATE']
+                metadata = sections['METADATA']
+                
+                # Now generate the page logic based on the template
+                logic = self._get_page_logic(page['name'], template, app_structure['base_css'])
+                
+                # Construct the final page structure
+                page_structure = metadata
+                page_structure['template'] = template
+                page_structure['js'] = logic
                 
                 logger.info(f"Successfully parsed structure for page: {page['name']}")
                 return page_structure
@@ -360,11 +371,11 @@ class AppGenerator:
             logger.error(f"Error creating pages for app {app.id}: {str(e)}")
             raise
 
-    def _get_component_styles(self, theme: dict) -> str:
+    def _get_component_styles(self, prompt_content: str) -> str:
         """Generate app-wide CSS based on theme and requirements."""
         try:
-            style_prompt = self._load_prompt_template('component_styles')
-            formatted_prompt = style_prompt.replace('{theme}', json.dumps(theme))
+            style_prompt = self._load_prompt_template('base_styling')
+            formatted_prompt = style_prompt.replace('{prompt_content}', prompt_content)
             
             message = self.claude.messages.create(
                 model="claude-3-sonnet-20240229",
@@ -395,7 +406,7 @@ class AppGenerator:
             app_structure = self._get_app_structure()
 
             # Generate app-wide CSS
-            app_css = self._get_component_styles(app_structure.get('theme', {}))
+            app_css = self._get_component_styles(self.prompt.content)
 
             # Create the app instance
             app = App.objects.create(
@@ -779,17 +790,17 @@ class AppGenerator:
             logger.error(f"Error getting page context for {page_name}: {str(e)}")
             raise
 
-    def _get_page_logic(self, page_name: str, template: str, context: list) -> str:
+    def _get_page_logic(self, page_name: str, template: str, base_css: str) -> str:
         """Get the JavaScript logic for a specific page."""
         try:
             logic_prompt = self._load_prompt_template('page_logic')
             formatted_prompt = logic_prompt.replace('{page_name}', page_name)
             formatted_prompt = formatted_prompt.replace('{template}', template)
-            formatted_prompt = formatted_prompt.replace('{context}', json.dumps(context))
+            formatted_prompt = formatted_prompt.replace('{base_css}', base_css)
             
             message = self.claude.messages.create(
                 model="claude-3-sonnet-20240229",
-                max_tokens=2000,
+                max_tokens=4096,
                 temperature=0.7,
                 messages=[
                     {

@@ -1,5 +1,5 @@
 You are a specialized AI focused on creating page structures.
-Your task is to generate both the template and metadata for a specific page.
+Your task is to generate the structure and metadata for a specific page.
 
 Page Information:
 - Name: {page_name}
@@ -20,9 +20,6 @@ Respond in the following format:
 ---TEMPLATE---
 [Your HTML template here using the special delimiters above]
 
----JAVASCRIPT---
-[Your JavaScript code here using standard quotes]
-
 ---METADATA---
 {
     "name": "Page name",
@@ -37,47 +34,32 @@ Respond in the following format:
 }
 
 Guidelines for TEMPLATE:
-1. Use semantic HTML5 elements
-2. Ensure proper ARIA attributes
-3. Use Bootstrap 5 classes
-4. Include proper data attributes
-5. Use the special delimiters defined above
-6. Use || for all HTML attribute values
-7. Use (( )) for all template variables
-8. Use (% %) for all template tags
-9. Include professional UI components:
-   - Responsive navigation
-   - Proper form layouts with validation
-   - Data tables with sorting/filtering
-   - Search functionality
-   - Pagination controls
-   - Loading states
-   - Error handling UI
-   - Success/failure notifications
-   - Modal dialogs
-   - Tooltips and popovers
-10. DataStore Integration:
+1. Assume you are generating content for the <body> tag only
+2. Use semantic HTML5 elements
+3. Ensure proper ARIA attributes
+4. Use Bootstrap 5 classes
+5. Include proper data attributes
+6. Use the special delimiters defined above
+7. Use || for all HTML attribute values
+8. Use (( )) for all template variables
+9. Use (% %) for all template tags
+10. Include professional UI components:
+    - Responsive navigation
+    - Proper form layouts with validation
+    - Data tables with sorting/filtering
+    - Search functionality
+    - Pagination controls
+    - Loading states
+    - Error handling UI
+    - Success/failure notifications
+    - Modal dialogs
+    - Tooltips and popovers
+11. DataStore Integration:
     - Form submissions to store data
     - Data filtering and search
     - Data visualization where appropriate
     - CRUD operations UI
     - Batch operations where needed
-
-Guidelines for JAVASCRIPT:
-1. Use Stimulus controllers
-2. Follow ES6+ best practices
-3. Implement proper error handling
-4. Use event delegation
-5. Clean up resources properly
-6. Include DataStore operations:
-   - Form submission handling
-   - Data filtering
-   - Search functionality
-   - Pagination
-   - Sorting
-   - CRUD operations
-   - Batch operations
-   - Real-time updates
 
 Guidelines for METADATA:
 1. Valid JSON format
