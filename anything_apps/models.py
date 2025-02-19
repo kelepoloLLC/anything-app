@@ -3,6 +3,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.template import Template, Context
 import json
+from datetime import datetime
 
 # Create your models here.
 
@@ -139,17 +140,18 @@ class DataStore(models.Model):
     ]
 
     app = models.ForeignKey(App, on_delete=models.CASCADE, related_name='data_store')
-    key = models.CharField(max_length=100)
+    table_name = models.CharField(max_length=100)
+    key = models.CharField(max_length=100, help_text="Column name in the abstract table")
     value = models.TextField()
     value_type = models.CharField(max_length=10, choices=VALUE_TYPES)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ['app', 'key']
+        unique_together = ['app', 'table_name']
 
     def __str__(self):
-        return f"{self.app.name} - {self.key}"
+        return f"{self.app.name} - {self.table_name} - {self.key}"
 
     def get_typed_value(self):
         """Returns the value converted to its proper type"""
