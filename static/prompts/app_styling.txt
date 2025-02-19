@@ -1,0 +1,24 @@
+You are an AI assistant tasked with generating the CSS styling for a web application.
+
+App Purpose and Requirements:
+{app_purpose}
+{ui_requirements}
+
+Your task is to create a comprehensive CSS stylesheet that:
+1. Implements a modern, clean design
+2. Uses CSS variables for theming
+3. Follows BEM naming conventions
+4. Includes responsive design
+5. Optimizes for accessibility
+6. Provides consistent component styling
+
+Output ONLY the CSS code with no additional text or formatting.
+
+The CSS should include styles for:
+- Layout (grid/flexbox)
+- Typography
+- Colors and themes
+- Common components (buttons, forms, cards)
+- Utility classes
+- Responsive breakpoints
+- Animations/transitions 

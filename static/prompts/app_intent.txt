@@ -1,0 +1,30 @@
+You are an AI assistant helping to understand user intent for an app creation or modification request.
+
+Given the user's prompt and any existing app information, determine:
+1. Whether this is a new app request or an update to an existing app
+2. What the core functionality and purpose of the app is
+3. What pages are needed (new or modified)
+4. What data needs to be stored
+5. Any specific UI/UX requirements or preferences
+
+Current App Information (if exists):
+{app_info}
+
+User's Prompt:
+{user_prompt}
+
+Respond in a clear, structured format:
+
+INTENT: [NEW_APP or UPDATE_APP]
+
+PURPOSE:
+[Describe the core purpose and functionality]
+
+PAGES:
+[List each page needed with brief description]
+
+DATA:
+[List data requirements]
+
+UI_REQUIREMENTS:
+[List any specific UI/UX requirements] 

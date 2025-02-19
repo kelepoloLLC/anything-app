@@ -340,14 +340,20 @@ class AppGenerator:
                 # Get page template
                 template = self._get_page_template(
                     page_data['name'],
-                    page_data.get('description', '')
+                    page_data.get('description', ''),
+                    self._get_component_styles(self.prompt.content)
                 )
                 
                 # Get page context
                 context = self._get_page_context(page_data['name'], template)
                 
                 # Get page logic
-                js_logic = self._get_page_logic(page_data['name'], template, context)
+                js_logic = self._get_page_logic(
+                    page_data['name'],
+                    page_data['description'],
+                    template,
+                    self._get_component_styles(self.prompt.content)
+                )
                 
                 # Create the page
                 page = AppPage.objects.create(
@@ -582,114 +588,213 @@ class AppGenerator:
         """Update an existing app based on the update prompt."""
         try:
             logger.info(f"Starting app update for app {app.id}")
+            self.prompt.status = 'PROCESSING'
+            self.prompt.save()
 
-            # Load and format the app update prompt
-            prompt_template = self._load_prompt_template('app_update')
-            formatted_prompt = prompt_template.replace('{app_name}', app.name)
-            formatted_prompt = formatted_prompt.replace('{app_description}', app.description)
-            formatted_prompt = formatted_prompt.replace('{data_structure}', json.dumps([{
-                'key': ds.key,
-                'value_type': ds.value_type,
-                'value': ds.value
-            } for ds in app.data_store.all()], indent=2))
-            formatted_prompt = formatted_prompt.replace('{pages}', json.dumps([{
-                'name': p.name,
-                'slug': p.slug,
-                'description': 'Existing page'
-            } for p in app.pages.all()], indent=2))
-            formatted_prompt = formatted_prompt.replace('{update_content}', update_content)
+            # Get app intent and requirements
+            intent = self._get_app_intent(existing_app=app)
+            
+            # Update app details if needed
+            if intent['PURPOSE'].strip() != app.description:
+                # Generate new CSS if purpose/requirements changed
+                app_css = self._get_app_css(
+                    app_purpose=intent['PURPOSE'],
+                    ui_requirements=intent['UI_REQUIREMENTS']
+                )
+                
+                app.name = intent['PURPOSE'].split('\n')[0]  # First line as name
+                app.description = intent['PURPOSE']
+                app.css_content = app_css
+                app.save()
+            
+            # Update data structure
+            self._setup_data_structure(app, intent['DATA'])
+            
+            # Update pages
+            for page_info in intent['PAGES'].split('\n'):
+                if ':' in page_info:
+                    page_name, page_purpose = page_info.split(':', 1)
+                    page_name = page_name.strip()
+                    page_purpose = page_purpose.strip()
+                    
+                    # Generate page components
+                    template = self._get_page_template(
+                        page_name=page_name,
+                        page_purpose=page_purpose,
+                        app_css=app.css_content
+                    )
+                    
+                    js_logic = self._get_page_logic(
+                        page_name=page_name,
+                        page_purpose=page_purpose,
+                        template=template,
+                        app_css=app.css_content
+                    )
+                    
+                    # Create or update page
+                    page, created = AppPage.objects.update_or_create(
+                        app=app,
+                        name=page_name,
+                        defaults={
+                            'template_content': template,
+                            'js_content': js_logic,
+                            'slug': page_name.lower().replace(' ', '-')
+                        }
+                    )
+            
+            self.prompt.status = 'COMPLETED'
+            self.prompt.save()
+            logger.info(f"Successfully updated app {app.id}")
+            
+            return app
+            
+        except Exception as e:
+            logger.error(f"Error updating app {app.id}: {str(e)}")
+            self.prompt.status = 'FAILED'
+            self.prompt.error_message = str(e)
+            self.prompt.save()
+            raise
 
+    def _get_app_intent(self, existing_app: App = None) -> dict:
+        """Determine user intent and app requirements."""
+        try:
+            # Load and format the intent prompt
+            intent_template = self._load_prompt_template('app_intent')
+            
+            # Format app info if it exists
+            app_info = "None" if not existing_app else f"""
+            Name: {existing_app.name}
+            Description: {existing_app.description}
+            Pages: {', '.join(p.name for p in existing_app.pages.all())}
+            Data: {', '.join(f'{d.key} ({d.value_type})' for d in existing_app.data_store.all())}
+            """
+            
+            formatted_prompt = intent_template.replace('{app_info}', app_info)
+            formatted_prompt = formatted_prompt.replace('{user_prompt}', self.prompt.content)
+            
+            message = self.claude.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=1000,
+                temperature=0.7,
+                messages=[{"role": "user", "content": formatted_prompt}]
+            )
+            
+            # Parse the structured response
+            response = message.content[0].text.strip()
+            sections = {}
+            current_section = None
+            current_content = []
+            
+            for line in response.split('\n'):
+                if ':' in line and line.split(':')[0].isupper():
+                    if current_section:
+                        sections[current_section] = '\n'.join(current_content).strip()
+                        current_content = []
+                    current_section = line.split(':')[0].strip()
+                else:
+                    current_content.append(line)
+            
+            if current_section:
+                sections[current_section] = '\n'.join(current_content).strip()
+            
+            return sections
+            
+        except Exception as e:
+            logger.error(f"Error getting app intent: {str(e)}")
+            raise
+
+    def _get_app_css(self, app_purpose: str, ui_requirements: str) -> str:
+        """Generate app-wide CSS."""
+        try:
+            css_template = self._load_prompt_template('app_styling')
+            formatted_prompt = css_template.replace('{app_purpose}', app_purpose)
+            formatted_prompt = formatted_prompt.replace('{ui_requirements}', ui_requirements)
+            
             message = self.claude.messages.create(
                 model="claude-3-sonnet-20240229",
                 max_tokens=4096,
                 temperature=0.7,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [{"type": "text", "text": formatted_prompt}]
-                    }
-                ]
+                messages=[{"role": "user", "content": formatted_prompt}]
             )
             
-            try:
-                # Parse the updated structure
-                response_text = self._clean_json_response(message.content[0].text.strip())
-                logger.info(f"Attempting to parse updated structure: {response_text}")
-                updated_structure = json.loads(response_text)
-                logger.info(f"Successfully parsed updated app structure")
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse updated structure: {str(e)}")
-                logger.error(f"Raw text that failed to parse: {response_text}")
-                raise
-
-            # Update app details
-            app.name = updated_structure['name']
-            app.description = updated_structure['description']
+            return message.content[0].text.strip()
             
-            # Generate new CSS if theme was updated
-            if 'theme' in updated_structure:
-                app.css_content = self._get_component_styles(updated_structure['theme'])
+        except Exception as e:
+            logger.error(f"Error generating app CSS: {str(e)}")
+            raise
+
+    def _get_page_template(self, page_name: str, page_purpose: str, app_css: str) -> str:
+        """Generate HTML template for a page."""
+        try:
+            template_prompt = self._load_prompt_template('page_template')
+            formatted_prompt = template_prompt.replace('{page_name}', page_name)
+            formatted_prompt = formatted_prompt.replace('{page_purpose}', page_purpose)
+            formatted_prompt = formatted_prompt.replace('{app_css}', app_css)
             
-            app.save()
+            message = self.claude.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=4096,
+                temperature=0.7,
+                messages=[{"role": "user", "content": formatted_prompt}]
+            )
+            
+            return message.content[0].text.strip()
+            
+        except Exception as e:
+            logger.error(f"Error generating page template: {str(e)}")
+            raise
 
-            # Update data structure
-            current_data_keys = set(app.data_store.values_list('key', flat=True))
-            new_data_keys = {data['key'] for data in updated_structure['data_structure']}
+    def _get_page_logic(self, page_name: str, page_purpose: str, template: str, app_css: str) -> str:
+        """Generate JavaScript logic for a page."""
+        try:
+            logic_prompt = self._load_prompt_template('page_logic')
+            formatted_prompt = logic_prompt.replace('{page_name}', page_name)
+            formatted_prompt = formatted_prompt.replace('{page_purpose}', page_purpose)
+            formatted_prompt = formatted_prompt.replace('{page_template}', template)
+            formatted_prompt = formatted_prompt.replace('{app_css}', app_css)
+            
+            message = self.claude.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=4096,
+                temperature=0.7,
+                messages=[{"role": "user", "content": formatted_prompt}]
+            )
+            
+            return message.content[0].text.strip()
+            
+        except Exception as e:
+            logger.error(f"Error generating page logic: {str(e)}")
+            raise
 
-            # Remove deleted data stores
-            app.data_store.filter(key__in=current_data_keys - new_data_keys).delete()
-
-            # Update or create data stores
-            for data_def in updated_structure['data_structure']:
-                DataStore.objects.update_or_create(
-                    app=app,
-                    key=data_def['key'],
-                    defaults={
-                        'value_type': data_def['value_type'],
-                        'value': ''  # Keep existing value if updating
-                    }
-                )
-
-            # Now generate detailed page structures and update pages
-            current_page_slugs = set(app.pages.values_list('slug', flat=True))
-            new_page_slugs = {page['slug'] for page in updated_structure['pages']}
-
-            # Remove deleted pages
-            app.pages.filter(slug__in=current_page_slugs - new_page_slugs).delete()
-
-            # Update or create pages
-            for page_def in updated_structure['pages']:
-                page_structure = self._get_page_structure(page_def, updated_structure)
-                
-                # Create or update the page
-                page, created = AppPage.objects.update_or_create(
-                    app=app,
-                    slug=page_def['slug'],
-                    defaults={
-                        'name': page_def['name'],
-                        'template_content': page_structure['template'],
-                        'js_content': page_structure.get('js', '')
-                    }
-                )
-
-                # Update context queries
-                if not created:
-                    page.context_queries.all().delete()
-
-                # Create context queries
-                for ctx in page_structure.get('contexts', []):
-                    ContextQuery.objects.create(
-                        page=page,
-                        context_key=ctx['key'],
-                        query_content=ctx['query'],
-                        query_type='orm'
-                    )
-
-            logger.info(f"Successfully updated app {app.id}")
+    def generate_app_v2(self) -> App:
+        """Generate an app using the split prompting approach for better reliability."""
+        try:
+            # Step 1: Get app metadata
+            app_metadata = self._get_app_metadata()
+            
+            # Create the app
+            app = App.objects.create(
+                organization=self.organization,
+                name=app_metadata['name'],
+                description=app_metadata.get('description', ''),
+                initial_prompt=self.prompt,
+                status='ACTIVE'
+            )
+            
+            # Step 2: Get pages structure
+            pages_structure = self._get_app_pages_structure(app_metadata)
+            
+            # Step 3: Generate each page with split concerns
+            self._create_pages(app, pages_structure)
+            
+            # Step 4: Set up initial data structure if defined
+            if 'data_structure' in app_metadata:
+                self._setup_data_structure(app, app_metadata['data_structure'])
+            
             return app
 
         except Exception as e:
-            logger.error(f"Error updating app {app.id}: {str(e)}")
+            logger.error(f"Error in generate_app_v2: {str(e)}")
             raise 
 
     def _get_app_metadata(self) -> dict:
@@ -741,30 +846,6 @@ class AppGenerator:
             logger.error(f"Error getting app pages structure: {str(e)}")
             raise
 
-    def _get_page_template(self, page_name: str, page_description: str) -> str:
-        """Get the HTML template for a specific page."""
-        try:
-            template_prompt = self._load_prompt_template('page_template')
-            formatted_prompt = template_prompt.replace('{page_name}', page_name)
-            formatted_prompt = formatted_prompt.replace('{page_description}', page_description)
-            
-            message = self.claude.messages.create(
-                model="claude-3-sonnet-20240229",
-                max_tokens=2000,
-                temperature=0.7,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [{"type": "text", "text": formatted_prompt}]
-                    }
-                ]
-            )
-            
-            return message.content[0].text.strip()
-        except Exception as e:
-            logger.error(f"Error getting page template for {page_name}: {str(e)}")
-            raise
-
     def _get_page_context(self, page_name: str, template: str) -> list:
         """Get the context variables needed for a page template."""
         try:
@@ -788,6 +869,30 @@ class AppGenerator:
             return json.loads(response_text)
         except Exception as e:
             logger.error(f"Error getting page context for {page_name}: {str(e)}")
+            raise
+
+    def _get_page_template(self, page_name: str, page_description: str) -> str:
+        """Get the HTML template for a specific page."""
+        try:
+            template_prompt = self._load_prompt_template('page_template')
+            formatted_prompt = template_prompt.replace('{page_name}', page_name)
+            formatted_prompt = formatted_prompt.replace('{page_description}', page_description)
+            
+            message = self.claude.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=2000,
+                temperature=0.7,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": formatted_prompt}]
+                    }
+                ]
+            )
+            
+            return message.content[0].text.strip()
+        except Exception as e:
+            logger.error(f"Error getting page template for {page_name}: {str(e)}")
             raise
 
     def _get_page_logic(self, page_name: str, template: str, base_css: str) -> str:

@@ -1,9 +1,27 @@
-You are a specialized AI focused on creating semantic HTML templates.
-Your task is to generate a clean, accessible HTML template for a specific page.
+You are an AI assistant tasked with creating an HTML template for a specific page in a web application.
 
 Page Information:
-- Name: {page_name}
-- Description: {page_description}
+Name: {page_name}
+Purpose: {page_purpose}
+
+App-wide CSS (for reference):
+{app_css}
+
+Your task is to create an HTML template that:
+1. Uses semantic HTML5 elements
+2. Leverages the existing CSS classes from the app-wide stylesheet
+3. Follows accessibility best practices
+4. Includes proper data attributes for JavaScript interactions
+5. Uses Django template syntax for dynamic content
+
+Output ONLY the HTML template code with no additional text or formatting.
+
+The template should:
+- Extend the base template
+- Include proper block tags
+- Use meaningful IDs and classes
+- Include ARIA attributes where needed
+- Use data-controller and data-action attributes for Stimulus.js
 
 Guidelines:
 1. Use semantic HTML5 elements appropriately
