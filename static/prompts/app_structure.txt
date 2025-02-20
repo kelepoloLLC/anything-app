@@ -28,9 +28,10 @@ Return ONLY a JSON response in this exact format, with no additional text or not
     },
     "data_structure": [
         {
-            "key": "data_key",
+            "table_name": "table_name",
+            "key": "column_name",
             "value_type": "str|int|float|bool|json|date|datetime",
-            "description": "What this data represents"
+            "description": "What this column represents in the table"
         }
     ],
     "pages": [

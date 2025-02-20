@@ -25,13 +25,19 @@ def data_store_list(request, app_id):
         sort_direction = request.GET.get('sort_direction', 'asc')
         filter_value = request.GET.get('filter', '')
         search_query = request.GET.get('search', '')
+        table_name = request.GET.get('table_name', '')
         
         # Start with all items for this app
         query = app.data_store.all()
         
+        # Filter by table_name if provided
+        if table_name:
+            query = query.filter(table_name=table_name)
+        
         # Apply search if provided
         if search_query:
             query = query.filter(
+                Q(table_name__icontains=search_query) |
                 Q(key__icontains=search_query) |
                 Q(value__icontains=search_query)
             )
@@ -56,6 +62,7 @@ def data_store_list(request, app_id):
             "items": [
                 {
                     "id": item.id,
+                    "table_name": item.table_name,
                     "key": item.key,
                     "value": item.get_typed_value(),
                     "value_type": item.value_type,
@@ -89,6 +96,7 @@ def data_store_detail(request, app_id, item_id):
         
         return JsonResponse({
             "id": item.id,
+            "table_name": item.table_name,
             "key": item.key,
             "value": item.get_typed_value(),
             "value_type": item.value_type,
@@ -116,12 +124,13 @@ def data_store_create(request, app_id):
         data = json.loads(request.body)
         
         # Validate required fields
-        if not all(k in data for k in ['key', 'value', 'value_type']):
+        if not all(k in data for k in ['table_name', 'key', 'value', 'value_type']):
             return JsonResponse({'error': 'Missing required fields'}, status=400)
         
         # Create the item
         item = DataStore.objects.create(
             app=app,
+            table_name=data['table_name'],
             key=data['key'],
             value=str(data['value']),  # Convert to string for storage
             value_type=data['value_type']
@@ -129,6 +138,7 @@ def data_store_create(request, app_id):
         
         return JsonResponse({
             "id": item.id,
+            "table_name": item.table_name,
             "key": item.key,
             "value": item.get_typed_value(),
             "value_type": item.value_type,
@@ -155,6 +165,8 @@ def data_store_update(request, app_id, item_id):
         data = json.loads(request.body)
         
         # Update fields
+        if 'table_name' in data:
+            item.table_name = data['table_name']
         if 'key' in data:
             item.key = data['key']
         if 'value' in data:
@@ -166,6 +178,7 @@ def data_store_update(request, app_id, item_id):
         
         return JsonResponse({
             "id": item.id,
+            "table_name": item.table_name,
             "key": item.key,
             "value": item.get_typed_value(),
             "value_type": item.value_type,

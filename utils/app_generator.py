@@ -321,8 +321,10 @@ class AppGenerator:
         try:
             logger.info(f"Setting up data structure for app {app.id}")
             for data_def in data_structure:
+                # Each data_def should now include table_name
                 DataStore.objects.create(
                     app=app,
+                    table_name=data_def['table_name'],
                     key=data_def['key'],
                     value='',  # Empty initial value
                     value_type=data_def['value_type']
@@ -468,14 +470,15 @@ class AppGenerator:
     ]
 
     app = models.ForeignKey(App, on_delete=models.CASCADE, related_name='data_store')
-    key = models.CharField(max_length=100)
+    table_name = models.CharField(max_length=100)
+    key = models.CharField(max_length=100, help_text="Column name in the abstract table")
     value = models.TextField()
     value_type = models.CharField(max_length=10, choices=VALUE_TYPES)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ['app', 'key']
+        unique_together = ['app', 'table_name']
 
     def get_typed_value(self):
         """Returns the value converted to its proper type"""
@@ -501,6 +504,7 @@ class AppGenerator:
             # Get the current data structure
             data_structure = [
                 {
+                    "table_name": ds.table_name,
                     "key": ds.key,
                     "value_type": ds.value_type,
                     "value": ds.value

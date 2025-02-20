@@ -27,7 +27,7 @@ Respond in the following format:
     "contexts": [
         {
             "key": "variable_name",
-            "query": "Python query to fetch the value",
+            "query": "Python query to fetch the value (must filter by table_name)",
             "description": "Purpose of this variable"
         }
     ]

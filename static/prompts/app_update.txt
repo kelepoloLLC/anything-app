@@ -17,7 +17,8 @@ Return ONLY a JSON response in this exact format, with no additional text or not
     "description": "Updated app description",
     "data_structure": [
         {
-            "key": "data_key",
+            "table_name": "table_name",
+            "key": "column_name",
             "value_type": "str|int|float|bool|json|date|datetime",
             "value": ""
         }
